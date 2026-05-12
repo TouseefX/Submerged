@@ -170,8 +170,6 @@ public static class MedScanMinigamePatch
 
     public static void ForceCleanup(MedScanMinigame instance)
     {
-        if (instance != null) instance.ScanTimer = 0f;
-
         var player = PlayerControl.LocalPlayer;
         if (player != null && !taskComplete)
         {
@@ -192,7 +190,7 @@ public static class MedScanMinigamePatch
             cachedScanSound = __instance.ScanSound;
 
         // Fresh open detected: Begin reset ScanTimer back to ScanDuration
-        if (__instance.amClosing == Minigame.CloseState.Closing)
+        if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
         {
             ForceCleanup(__instance);
             Reset();
