@@ -1,4 +1,4 @@
-﻿using BepInEx.Unity.IL2CPP.Utils;
+using BepInEx.Unity.IL2CPP.Utils;
 using Il2CppInterop.Runtime.Attributes;
 using Reactor.Utilities.Attributes;
 using UnityEngine;
@@ -11,17 +11,13 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
     private const float SNAP_BACK_DURATION = 0.2f;
 
     public FeedFishMinigame owner;
-
     public Transform rotationTarget;
     public ParticleSystem fishFood;
-    // public Transform fishFoodParent;
     public BoxCollider2D activatedArea;
 
-    // public float shakeDuration = 3f;
     private int _correctFoodIndex;
     private float _counter;
     private bool _isCorrectFood;
-
     private bool _isNearDropZone;
 
     private Vector3 _lastLocation;
@@ -31,6 +27,11 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
     private float _recordedMovement;
     private float _stepDuration;
 
+#if ANDROID
+    private bool _isBeingDragged = false;
+    private int _activeTouchId = -1;
+#endif
+
     private void Start()
     {
         _mainCamera = Camera.main;
@@ -38,12 +39,14 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
         fishFood.Stop();
         _counter = 0f;
         _stepDuration = 0f;
-
-        //pick 2 fishgroups randomly
     }
 
     private void Update()
     {
+#if ANDROID
+        HandleAndroidTouch();
+#endif
+
         if (_isNearDropZone && _isCorrectFood)
         {
             Vector3 difference = rotationTarget.transform.position - transform.position;
@@ -65,14 +68,9 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
 
                     if (_stepDuration > 3f)
                     {
-                        //Complete this fish food
                         fishFood.Stop();
                         _isCorrectFood = false;
                         this.StartCoroutine(CoRotate());
-                        //OnMouseUp();
-                        // BoxCollider2D myTouchCollider = GetComponents<BoxCollider2D>().First(col => !col.isTrigger);
-                        // myTouchCollider.enabled = false;
-
                         owner.UpdateCompletedStep(_correctFoodIndex);
                     }
                 }
@@ -86,13 +84,63 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
         }
     }
 
+#if ANDROID
+    private void HandleAndroidTouch()
+    {
+        if (Input.touchCount <= 0) return;
+
+        foreach (Touch touch in Input.touches)
+        {
+            Vector3 touchPosWorld = _mainCamera.ScreenToWorldPoint(touch.position);
+            touchPosWorld.z = transform.position.z;
+
+            if (touch.phase == TouchPhase.Began)
+            {
+                // Check if this specific feeder was touched
+                RaycastHit2D hit = Physics2D.Raycast(touchPosWorld, Vector2.zero);
+                if (hit.collider != null && hit.collider.gameObject == gameObject)
+                {
+                    _isBeingDragged = true;
+                    _activeTouchId = touch.fingerId;
+                    _mouseOffset = transform.position - touchPosWorld;
+                    StopAllCoroutines(); // Stop snap-back if we grab it mid-air
+                }
+            }
+            else if (touch.fingerId == _activeTouchId)
+            {
+                if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary)
+                {
+                    Vector3 newPos = touchPosWorld + _mouseOffset;
+                    newPos.z = transform.position.z;
+                    transform.position = newPos;
+
+                    if (_isNearDropZone)
+                    {
+                        _recordedMovement += Mathf.Abs((newPos - _lastLocation).sqrMagnitude) * 1000;
+                        _lastLocation = newPos;
+                    }
+                }
+                else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+                {
+                    _isBeingDragged = false;
+                    _activeTouchId = -1;
+                    OnMouseUp(); // Reuse the return-to-shelf logic
+                }
+            }
+        }
+    }
+#endif
+
     private void OnMouseDown()
     {
+#if !ANDROID
         _mouseOffset = gameObject.transform.position - _mainCamera.ScreenToWorldPoint(Input.mousePosition);
+#endif
     }
 
     private void OnMouseDrag()
     {
+#if !ANDROID
         Vector3 position = _mainCamera.ScreenToWorldPoint(Input.mousePosition) + _mouseOffset;
         position.z = gameObject.transform.position.z;
 
@@ -103,11 +151,11 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
             _recordedMovement += Mathf.Abs((position - _lastLocation).sqrMagnitude) * 1000;
             _lastLocation = position;
         }
+#endif
     }
 
     private void OnMouseUp()
     {
-        //CoRoutine to move back to original location
         this.StartCoroutine(CoReturnToShelf());
         _recordedMovement = 0f;
     }
@@ -119,7 +167,6 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
             if (!_isNearDropZone)
             {
                 _isNearDropZone = true;
-                //FishFood.Play();
                 fishFood.transform.position = _myLid.position;
                 _lastLocation = transform.position;
             }
@@ -143,11 +190,7 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
     public void SetCorrectFoodStatus(bool isCorrect, int index = -1)
     {
         _isCorrectFood = isCorrect;
-
-        if (isCorrect)
-        {
-            _correctFoodIndex = index;
-        }
+        if (isCorrect) _correctFoodIndex = index;
     }
 
     [HideFromIl2Cpp]
@@ -160,10 +203,8 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
         {
             float t2 = t / SNAP_BACK_DURATION;
             transform.localRotation = Quaternion.Slerp(currentRotation, targetRotation, t2);
-
             yield return null;
         }
-
         transform.localRotation = targetRotation;
     }
 
@@ -172,19 +213,15 @@ public sealed class DraggableFeeder(nint ptr) : MonoBehaviour(ptr)
     {
         Vector3 currentPosition = transform.localPosition;
         Vector3 targetPosition = Vector3.zero;
-
         Quaternion targetRotation = Quaternion.identity;
         Quaternion currentRotation = transform.localRotation;
-
         targetPosition.z = transform.localPosition.z;
 
         for (float t = 0f; t <= SNAP_BACK_DURATION; t += Time.deltaTime)
         {
             float t2 = t / SNAP_BACK_DURATION;
-
             transform.localPosition = Vector3.Lerp(currentPosition, targetPosition, t2);
             transform.localRotation = Quaternion.Slerp(currentRotation, targetRotation, t2);
-
             yield return null;
         }
 
