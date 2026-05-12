@@ -35,6 +35,7 @@ public static class MedScanClosePatch
         if (!MedScanMapChecker.IsSubmerged()) return;
         if (__instance is not MedScanMinigame medScan) return;
         MedScanMinigamePatch.ForceCleanup(medScan);
+        MedScanMinigamePatch.Reset();
     }
 }
 
@@ -46,6 +47,7 @@ public static class MedScanCloseBoolPatch
         if (!MedScanMapChecker.IsSubmerged()) return;
         if (__instance is not MedScanMinigame medScan) return;
         MedScanMinigamePatch.ForceCleanup(medScan);
+        MedScanMinigamePatch.Reset();
     }
 }
 
