@@ -1,10 +1,11 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Linq;
 using Reactor.Utilities.Attributes;
 using Reactor.Utilities.Extensions;
 using Submerged.BaseGame.Interfaces;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Submerged.Minigames.CustomMinigames.DoorSabotage;
 
@@ -32,9 +33,16 @@ public class OpenDoorsMinigameNoInterface(nint ptr) : Minigame(ptr)
     private Collider2D _handleCollider;
     private bool _letterSelected;
 
+#if ANDROID
+    private string _targetChar;
+    private TouchScreenKeyboard _keyboard;
+    private const string Pool = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+#else
     private KeyCode _targetKey;
-    private float _timer;
+    private string _targetChar;
+#endif
 
+    private float _timer;
     protected OpenableDoor myDoor;
 
     public void Start()
@@ -43,11 +51,47 @@ public class OpenDoorsMinigameNoInterface(nint ptr) : Minigame(ptr)
         finishedScreen = transform.Find("Finished Screen").gameObject;
         errorScreen = transform.Find("Error Screen").gameObject;
         handle = transform.Find("Rotated/Handle").gameObject;
-
-        _targetKey = GetRandomKey();
-        character.text = _targetKey.ToString()[^1..];
         _handleCollider = handle.GetComponent<Collider2D>();
+
+#if ANDROID
+        _targetChar = GetRandomChar();
+        character.text = _targetChar;
+        // Open the native soft keyboard — no autocorrect, no predictive text, single character
+        _keyboard = TouchScreenKeyboard.Open(
+            "",
+            TouchScreenKeyboardType.ASCIICapable,
+            autocorrection: false,
+            multiline: false,
+            secure: false,
+            alert: false,
+            textPlaceholder: $"Type  {_targetChar}",
+            characterLimit: 1
+        );
+#else
+        _targetKey = GetRandomKey();
+        _targetChar = _targetKey.ToString()[^1..];
+        character.text = _targetChar;
+#endif
     }
+
+#if ANDROID
+    private static string GetRandomChar() =>
+        Pool[Random.Range(0, Pool.Length)].ToString();
+
+    private void CloseKeyboard()
+    {
+        if (_keyboard != null)
+            _keyboard.active = false;
+    }
+#else
+    private KeyCode GetRandomKey()
+    {
+        return Enumerable.Range((int) KeyCode.A, 26)
+            .Concat(Enumerable.Range((int) KeyCode.Alpha0, 10))
+            .Select(k => (KeyCode) k)
+            .Random();
+    }
+#endif
 
     public void Update()
     {
@@ -62,31 +106,42 @@ public class OpenDoorsMinigameNoInterface(nint ptr) : Minigame(ptr)
         {
             _complete = true;
             StartCoroutine(CoStartClose(0.25f));
-
             return;
         }
 
         _controller.Update();
 
+#if ANDROID
+        // Input.inputString captures every character delivered by the IME this frame
+        if (!_letterSelected && Input.inputString.Length > 0)
+        {
+            foreach (char c in Input.inputString)
+            {
+                if (c.ToString().ToUpper() == _targetChar)
+                {
+                    finishedScreen.SetActive(true);
+                    _letterSelected = true;
+                    CloseKeyboard();
+                    break;
+                }
+            }
+        }
+#else
         if (Input.GetKeyDown(_targetKey))
         {
             finishedScreen.SetActive(true);
             _letterSelected = true;
         }
+#endif
 
         CheckHandle();
     }
 
-    private KeyCode GetRandomKey()
-    {
-        return Enumerable.Range((int) KeyCode.A, 26)
-            .Concat(Enumerable.Range((int) KeyCode.Alpha0, 10))
-            .Select(k => (KeyCode) k)
-            .Random();
-    }
-
     public void Finish()
     {
+#if ANDROID
+        CloseKeyboard();
+#endif
         ShipStatus.Instance.RpcUpdateSystem(SystemTypes.Doors, (byte) (myDoor.Id | 64));
         myDoor.SetDoorway(true);
         StartCoroutine(CoStartClose());
@@ -101,37 +156,31 @@ public class OpenDoorsMinigameNoInterface(nint ptr) : Minigame(ptr)
             case DragState.Dragging:
             {
                 errorScreen.SetActive(!_letterSelected);
-
                 if (!_letterSelected) return;
 
                 Vector2 vector = handle.transform.position;
-                float num = Vector2.SignedAngle(_controller.DragStartPosition - vector, _controller.DragPosition - vector);
+                float num = Vector2.SignedAngle(
+                    _controller.DragStartPosition - vector,
+                    _controller.DragPosition - vector);
                 handle.transform.localEulerAngles = new Vector3(0f, 0f, Mathf.Clamp(num, -90f, 0));
-
                 return;
             }
             case DragState.Released:
             {
                 if (!_letterSelected) return;
+
                 float num2 = handle.transform.localEulerAngles.z;
-
-                if (num2 > 180f)
-                {
-                    num2 -= 360f;
-                }
-
+                if (num2 > 180f) num2 -= 360f;
                 num2 %= 360f;
 
                 if (Mathf.Abs(num2) > 80f)
                 {
                     _complete = true;
                     Finish();
-
                     return;
                 }
 
                 handle.transform.localEulerAngles = new Vector3(0f, 0f, 0f);
-
                 break;
             }
         }
