@@ -212,7 +212,7 @@ public static class MedScanMinigamePatch
                 .FirstOrDefault(c => c.TaskTypes.Contains(TaskTypes.SubmitScan));
 
             targetPosition = console != null
-                ? console.transform.position + new Vector3(0.1f, 0.41f, 0f)
+                ? console.transform.position + new Vector3(0.1f, 0.42f, 0f)
                 : player.transform.position;
 
             targetSet = true;
