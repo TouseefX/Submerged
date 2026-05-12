@@ -219,13 +219,8 @@ public static class MedScanMinigamePatch
         // ── Walk phase ────────────────────────────────────────────────────
         if (!walkDone)
         {
-        	if (__instance.ScanTimer < __instance.ScanDuration)
-            {
-                __instance.ScanTimer = 10f;
-            }
-            
-            float progress    = 1f - (__instance.ScanTimer / __instance.ScanDuration);
-            UpdateProgressBar(__instance, progress);
+        	__instance.ScanTimer = __instance.ScanDuration;  
+            UpdateProgressBar(__instance, 0f);
             
             string playerName = player?.Data?.PlayerName ?? "Player";
             UpdateStatusText(__instance, string.Format(translator.GetString(StringNames.MedscanWaitingFor), playerName));
