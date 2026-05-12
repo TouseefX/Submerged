@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using BepInEx.Unity.IL2CPP.Utils;
 using Il2CppInterop.Runtime.Attributes;
@@ -19,18 +19,19 @@ public sealed class SetNavBeaconPart2(nint ptr) : MonoBehaviour(ptr)
                                                            .ToArray();
 
     private Transform _blinkyBar;
-
     private bool _failing;
-
     private SetNavBeaconMinigame _parent;
     private TextMeshPro _text;
+
+#if ANDROID
+    private TouchScreenKeyboard _keyboard;
+#endif
 
     private void Awake()
     {
         _parent = GetComponentInParent<SetNavBeaconMinigame>();
         _blinkyBar = transform.Find("Blinking bar");
         _text = transform.Find("Text").GetComponent<TextMeshPro>();
-        transform.Find("Input boxes");
 
         TextMeshPro loreText = transform.Find("TranslationText").GetComponent<TextMeshPro>();
         loreText.text = Tasks.RecordNavBeaconData_Enter;
@@ -43,6 +44,54 @@ public sealed class SetNavBeaconPart2(nint ptr) : MonoBehaviour(ptr)
     {
         if (_failing) return;
 
+#if ANDROID
+        HandleAndroidKeyboard();
+#else
+        HandlePCInput();
+#endif
+
+        _blinkyBar.localPosition = new Vector3(Mathf.Clamp(_text.text.Length, 0, 2) * 4.21f, 0, _blinkyBar.localPosition.z);
+    }
+
+#if ANDROID
+    private void HandleAndroidKeyboard()
+    {
+        // Re-open keyboard if it was closed or canceled before finishing
+        if (_keyboard == null || (!_keyboard.active && _keyboard.status != TouchScreenKeyboard.Status.Done))
+        {
+            _keyboard = TouchScreenKeyboard.Open(_text.text, TouchScreenKeyboardType.ASCIICapable, false, false, false, false);
+        }
+
+        if (_keyboard != null)
+        {
+            string input = _keyboard.text.ToUpper();
+            
+            // Limit to 3 characters manually
+            if (input.Length > 3)
+            {
+                input = input.Substring(0, 3);
+                _keyboard.text = input;
+            }
+
+            _text.text = input;
+
+            if (_text.text.Length == 3)
+            {
+                if (_text.text == _parent.code)
+                {
+                    FinishTask();
+                }
+                else
+                {
+                    this.StartCoroutine(Fail());
+                }
+            }
+        }
+    }
+#endif
+
+    private void HandlePCInput()
+    {
         if (_text.text.Length > 0 && Input.GetKeyDown(KeyCode.Backspace))
         {
             _text.text = _text.text.Substring(0, _text.text.Length - 1);
@@ -58,9 +107,7 @@ public sealed class SetNavBeaconPart2(nint ptr) : MonoBehaviour(ptr)
                 {
                     if (_text.text == _parent.code)
                     {
-                        _parent.MyNormTask.taskStep = 1;
-                        _parent.MyNormTask.NextStep();
-                        _parent.StartCoroutine(_parent.CoStartClose());
+                        FinishTask();
                     }
                     else
                     {
@@ -69,30 +116,39 @@ public sealed class SetNavBeaconPart2(nint ptr) : MonoBehaviour(ptr)
                 }
             }
         }
+    }
 
-        _blinkyBar.localPosition = new Vector3(Mathf.Clamp(_text.text.Length, 0, 2) * 4.21f, 0, _blinkyBar.localPosition.z);
+    private void FinishTask()
+    {
+#if ANDROID
+        if (_keyboard != null) _keyboard.active = false;
+#endif
+        _parent.MyNormTask.taskStep = 1;
+        _parent.MyNormTask.NextStep();
+        _parent.StartCoroutine(_parent.CoStartClose());
     }
 
     private void OnEnable()
     {
         this.StartCoroutine(CoBlink());
+#if ANDROID
+        _keyboard = TouchScreenKeyboard.Open("", TouchScreenKeyboardType.ASCIICapable, false, false, false, false);
+#endif
     }
 
     [HideFromIl2Cpp]
     private IEnumerator Fail()
     {
-        string ogText = _text.text;
         _failing = true;
+        string ogText = _text.text;
+        
         _text.text = $"<color=red>{ogText}</color>";
-
-        yield return new WaitForSeconds(0.1f);
-        _text.text = $"<color=black>{ogText}</color>";
-
-        yield return new WaitForSeconds(0.1f);
-        _text.text = $"<color=red>{ogText}</color>";
-
-        yield return new WaitForSeconds(0.1f);
-        _text.text = $"{ogText}";
+        yield return new WaitForSeconds(0.15f);
+        _text.text = "";
+        
+#if ANDROID
+        if (_keyboard != null) _keyboard.text = "";
+#endif
         _failing = false;
     }
 
@@ -102,10 +158,8 @@ public sealed class SetNavBeaconPart2(nint ptr) : MonoBehaviour(ptr)
         while (true)
         {
             _blinkyBar.gameObject.SetActive(false);
-
             yield return new WaitForSecondsRealtime(0.5f);
             _blinkyBar.gameObject.SetActive(true);
-
             yield return new WaitForSecondsRealtime(0.5f);
         }
     }
