@@ -192,7 +192,7 @@ public static class MedScanMinigamePatch
             cachedScanSound = __instance.ScanSound;
 
         // Fresh open detected: Begin reset ScanTimer back to ScanDuration
-        if (__instance.amClosing || !__instance.isActiveAndEnabled)
+        if (__instance.amClosing)
         {
             ForceCleanup(__instance);
             Reset();
