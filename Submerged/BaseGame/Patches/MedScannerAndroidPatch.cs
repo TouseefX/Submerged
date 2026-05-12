@@ -194,6 +194,7 @@ public static class MedScanMinigamePatch
         // Fresh open detected: Begin reset ScanTimer back to ScanDuration
         if (__instance.amClosing || !__instance.isActiveAndEnabled)
         {
+            ForceCleanup(__instance);
             Reset();
             return false;
         }
