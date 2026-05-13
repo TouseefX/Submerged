@@ -77,7 +77,7 @@ namespace Submerged.BaseGame.Patches
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // Different colors + shapes (already working)
+            // === Different colors + symbols ===
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -100,6 +100,7 @@ namespace Submerged.BaseGame.Patches
                 }
             }
 
+            // Force randomization AFTER original Begin
             ReRandomizeWires(instance);
 
             instance.myController = null;
@@ -118,12 +119,15 @@ namespace Submerged.BaseGame.Patches
         private static void ReRandomizeWires(WireMinigame instance)
         {
             int count = instance.LeftNodes.Length;
+            if (count == 0) return;
+
             instance.ExpectedWires = new sbyte[count];
             instance.ActualWires = new sbyte[count];
 
             sbyte[] rightOrder = new sbyte[count];
             for (sbyte i = 0; i < count; i++) rightOrder[i] = i;
 
+            // Strong Fisher-Yates shuffle
             for (int i = count - 1; i > 0; i--)
             {
                 int j = UnityEngine.Random.Range(0, i + 1);
@@ -171,6 +175,7 @@ namespace Submerged.BaseGame.Patches
                     {
                         selectedWireIndex = i;
                         isDragging = true;
+
                         if (instance.selectedWireUI != null)
                             instance.selectedWireUI.position = wire.transform.position;
                         break;
@@ -182,9 +187,7 @@ namespace Submerged.BaseGame.Patches
             {
                 Wire wire = instance.LeftNodes[selectedWireIndex];
                 if (wire != null)
-                {
-                    wire.ResetLine(worldPos, false);   // Update line while dragging
-                }
+                    wire.ResetLine(worldPos, false);
 
                 if (ended)
                 {
@@ -192,7 +195,12 @@ namespace Submerged.BaseGame.Patches
 
                     if (rightNode != null && wire != null)
                     {
-                        wire.ConnectRight(rightNode);        // This is the important call
+                        // Stronger connection
+                        wire.ConnectRight(rightNode);
+
+                        // Manually update ActualWires to help CheckTask
+                        if (selectedWireIndex < instance.ActualWires.Length)
+                            instance.ActualWires[selectedWireIndex] = rightNode.WireId;
 
                         if (instance.WireSounds != null && instance.WireSounds.Length > 0)
                         {
@@ -204,7 +212,7 @@ namespace Submerged.BaseGame.Patches
                     }
                     else if (wire != null)
                     {
-                        wire.ResetLine(wire.BaseWorldPos, true); // Reset on miss
+                        wire.ResetLine(wire.BaseWorldPos, true);
                     }
 
                     selectedWireIndex = -1;
@@ -217,15 +225,10 @@ namespace Submerged.BaseGame.Patches
         {
             if (instance.RightNodes == null) return null;
 
-            // Slightly larger hitbox for easier connection on Android
             foreach (var node in instance.RightNodes)
             {
-                if (node?.hitbox != null)
-                {
-                    // Optional: Increase tolerance
-                    if (node.hitbox.OverlapPoint(pos))
-                        return node;
-                }
+                if (node?.hitbox != null && node.hitbox.OverlapPoint(pos))
+                    return node;
             }
             return null;
         }
@@ -247,10 +250,7 @@ namespace Submerged.BaseGame.Patches
             if (instance.LeftNodes != null)
             {
                 foreach (var wire in instance.LeftNodes)
-                {
-                    if (wire != null)
-                        wire.ResetLine(wire.BaseWorldPos, true);
-                }
+                    if (wire != null) wire.ResetLine(wire.BaseWorldPos, true);
             }
         }
 
