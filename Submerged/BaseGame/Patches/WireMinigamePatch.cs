@@ -4,17 +4,14 @@ using Submerged.Extensions;
 
 namespace Submerged.BaseGame.Patches
 {
-    // ====================== HELPER METHOD (Top Level) ======================
-    public static bool IsSubmerged()
-    {
-        return ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged();
-    }
-
-    // =======================================================================
-
     [HarmonyPatch(typeof(WireMinigame))]
     public static class WireMinigameAndroidRecreation
     {
+        public static bool IsSubmerged()
+        {
+            return ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged();
+        }
+        
         [HarmonyPatch(nameof(WireMinigame.Begin))]
         [HarmonyPrefix]
         public static bool Begin_Prefix(WireMinigame __instance, PlayerTask task)
