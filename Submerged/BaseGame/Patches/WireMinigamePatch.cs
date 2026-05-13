@@ -7,16 +7,12 @@ namespace Submerged.BaseGame.Patches
     [HarmonyPatch(typeof(WireMinigame))]
     public static class WireMinigameAndroidRecreation
     {
-        public static bool IsSubmerged()
-        {
-            return ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged();
-        }
-        
         [HarmonyPatch(nameof(WireMinigame.Begin))]
         [HarmonyPrefix]
         public static bool Begin_Prefix(WireMinigame __instance, PlayerTask task)
         {
-            if (!IsSubmerged()) return true;
+            if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) 
+                return true;
 
             CustomWireMinigame.Setup(__instance, task);
             return false;
@@ -34,7 +30,7 @@ namespace Submerged.BaseGame.Patches
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // Fix: Different colors + symbols for each wire
+            // Fix different symbols & colors for each wire
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -96,7 +92,8 @@ namespace Submerged.BaseGame.Patches
         [HarmonyPrefix]
         public static bool Update_Prefix(WireMinigame __instance)
         {
-            if (!IsSubmerged()) return true;
+            if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) 
+                return true;
 
             UpdateAndroid(__instance);
             __instance.UpdateLights();
@@ -187,9 +184,9 @@ namespace Submerged.BaseGame.Patches
         {
             instance.CheckTask();
 
-            if (instance.MyNormTask != null) 
+            if (instance.MyNormTask != null)
                 instance.MyNormTask.NextStep();
-            else if (instance.MyTask != null) 
+            else if (instance.MyTask != null)
                 instance.MyTask.Complete();
 
             instance.StartCoroutine(instance.CoStartClose());
