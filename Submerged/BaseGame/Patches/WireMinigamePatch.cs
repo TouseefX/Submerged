@@ -43,7 +43,6 @@ namespace Submerged.BaseGame.Patches
             if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) 
                 return true;
 
-            // Safety check (as you requested)
             if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
             {
                 CustomWireMinigame.ForceCleanup(__instance);
@@ -79,7 +78,7 @@ namespace Submerged.BaseGame.Patches
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // Fix: Different symbols and colors for each wire
+            // Fix different symbols & colors
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -126,9 +125,10 @@ namespace Submerged.BaseGame.Patches
             sbyte[] rightOrder = new sbyte[count];
             for (sbyte i = 0; i < count; i++) rightOrder[i] = i;
 
+            // Fisher-Yates shuffle
             for (int i = count - 1; i > 0; i--)
             {
-                int j = Random.Range(0, i + 1);
+                int j = UnityEngine.Random.Range(0, i + 1);
                 (rightOrder[i], rightOrder[j]) = (rightOrder[j], rightOrder[i]);
             }
 
@@ -195,7 +195,10 @@ namespace Submerged.BaseGame.Patches
                         wire.ConnectRight(rightNode);
 
                         if (instance.WireSounds != null && instance.WireSounds.Length > 0)
-                            SoundManager.Instance?.PlaySound(instance.WireSounds[Random.Range(0, instance.WireSounds.Length)], false);
+                        {
+                            int idx = UnityEngine.Random.Range(0, instance.WireSounds.Length);
+                            SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
+                        }
 
                         CheckTask(instance);
                     }
