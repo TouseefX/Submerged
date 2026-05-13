@@ -4,6 +4,14 @@ using Submerged.Extensions;
 
 namespace Submerged.BaseGame.Patches
 {
+    // ====================== HELPER METHOD (Top Level) ======================
+    public static bool IsSubmerged()
+    {
+        return ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged();
+    }
+
+    // =======================================================================
+
     [HarmonyPatch(typeof(WireMinigame))]
     public static class WireMinigameAndroidRecreation
     {
@@ -25,11 +33,11 @@ namespace Submerged.BaseGame.Patches
 
         public static void Setup(WireMinigame instance, PlayerTask task)
         {
-            instance.Begin(task); // Original setup
+            instance.Begin(task);
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // === Different symbols & colors (fixes all wires same PS triangle) ===
+            // Fix: Different colors + symbols for each wire
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -37,13 +45,11 @@ namespace Submerged.BaseGame.Patches
 
                 if (leftWire != null)
                 {
-                    Sprite symbol = instance.Symbols != null && instance.Symbols.Length > i 
-                        ? instance.Symbols[i] 
-                        : (instance.Symbols != null && instance.Symbols.Length > 0 ? instance.Symbols[0] : null);
+                    Sprite symbol = instance.Symbols != null && instance.Symbols.Length > 0 
+                        ? instance.Symbols[i % instance.Symbols.Length] : null;
 
-                    Color color = WireMinigame.colors != null && WireMinigame.colors.Length > i 
-                        ? WireMinigame.colors[i] 
-                        : Color.white;
+                    Color color = WireMinigame.colors != null && WireMinigame.colors.Length > 0 
+                        ? WireMinigame.colors[i % WireMinigame.colors.Length] : Color.white;
 
                     leftWire.SetColor(color, symbol);
                     rightNode?.SetColor(color, symbol);
@@ -54,10 +60,8 @@ namespace Submerged.BaseGame.Patches
                 }
             }
 
-            // === Proper randomization (fixes one wire completes everything) ===
             ReRandomizeWires(instance);
 
-            // Android setup
             instance.myController = null;
             selectedWireIndex = -1;
             isDragging = false;
@@ -78,7 +82,6 @@ namespace Submerged.BaseGame.Patches
             sbyte[] rightOrder = new sbyte[count];
             for (sbyte i = 0; i < count; i++) rightOrder[i] = i;
 
-            // Fisher-Yates shuffle
             for (int i = count - 1; i > 0; i--)
             {
                 int j = Random.Range(0, i + 1);
@@ -118,7 +121,7 @@ namespace Submerged.BaseGame.Patches
                 worldPos = Camera.main.ScreenToWorldPoint(touch.position);
                 began = touch.phase == TouchPhase.Began;
                 ended = touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled;
-                isDragging = (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary);
+                isDragging = touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary;
             }
             else
             {
@@ -140,7 +143,6 @@ namespace Submerged.BaseGame.Patches
 
                         if (instance.selectedWireUI != null)
                             instance.selectedWireUI.position = wire.transform.position;
-
                         break;
                     }
                 }
@@ -188,18 +190,12 @@ namespace Submerged.BaseGame.Patches
         {
             instance.CheckTask();
 
-            if (instance.MyNormTask != null)
+            if (instance.MyNormTask != null) 
                 instance.MyNormTask.NextStep();
-            else if (instance.MyTask != null)
+            else if (instance.MyTask != null) 
                 instance.MyTask.Complete();
 
             instance.StartCoroutine(instance.CoStartClose());
-        }
-
-        // Shared helper
-        public static bool IsSubmerged()
-        {
-            return ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged();
         }
     }
 }
