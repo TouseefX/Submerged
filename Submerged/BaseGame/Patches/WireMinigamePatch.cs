@@ -25,12 +25,11 @@ namespace Submerged.BaseGame.Patches
 
         public static void Setup(WireMinigame instance, PlayerTask task)
         {
-            // Let original setup run first
-            instance.Begin(task);
+            instance.Begin(task); // Original setup
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // === FIX 1: Different symbols & colors for each wire (no more all PS triangle) ===
+            // === Different symbols & colors (fixes all wires same PS triangle) ===
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -38,33 +37,31 @@ namespace Submerged.BaseGame.Patches
 
                 if (leftWire != null)
                 {
-                    Sprite symbol = instance.Symbols != null && instance.Symbols.Length > 0 
-                        ? instance.Symbols[i % instance.Symbols.Length] 
-                        : null;
+                    Sprite symbol = instance.Symbols != null && instance.Symbols.Length > i 
+                        ? instance.Symbols[i] 
+                        : (instance.Symbols != null && instance.Symbols.Length > 0 ? instance.Symbols[0] : null);
 
-                    Color color = WireMinigame.colors != null && WireMinigame.colors.Length > 0 
-                        ? WireMinigame.colors[i % WireMinigame.colors.Length] 
+                    Color color = WireMinigame.colors != null && WireMinigame.colors.Length > i 
+                        ? WireMinigame.colors[i] 
                         : Color.white;
 
                     leftWire.SetColor(color, symbol);
                     rightNode?.SetColor(color, symbol);
 
-                    // Reset line to base position with correct color
                     leftWire.ResetLine(leftWire.BaseWorldPos, true);
                     if (leftWire.Liner != null)
                         leftWire.Liner.color = Color.white;
                 }
             }
 
-            // === FIX 2: Proper randomization (prevents one wire completes all) ===
+            // === Proper randomization (fixes one wire completes everything) ===
             ReRandomizeWires(instance);
 
-            // Android specific
+            // Android setup
             instance.myController = null;
             selectedWireIndex = -1;
             isDragging = false;
 
-            // UI setup
             if (instance.selectingWireGlyphs != null)
                 foreach (var g in instance.selectingWireGlyphs) if (g != null) g.SetActive(true);
 
@@ -115,16 +112,14 @@ namespace Submerged.BaseGame.Patches
             bool began = false;
             bool ended = false;
 
-            // Touch Input (Android)
             if (Input.touchCount > 0)
             {
                 Touch touch = Input.GetTouch(0);
                 worldPos = Camera.main.ScreenToWorldPoint(touch.position);
                 began = touch.phase == TouchPhase.Began;
                 ended = touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled;
-                isDragging = touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary;
+                isDragging = (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary);
             }
-            // Mouse Fallback
             else
             {
                 worldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -133,7 +128,6 @@ namespace Submerged.BaseGame.Patches
                 isDragging = Input.GetMouseButton(0);
             }
 
-            // Select wire
             if (began)
             {
                 for (int i = 0; i < instance.LeftNodes.Length; i++)
@@ -152,14 +146,11 @@ namespace Submerged.BaseGame.Patches
                 }
             }
 
-            // Dragging
             if (isDragging && selectedWireIndex >= 0 && selectedWireIndex < instance.LeftNodes.Length)
             {
                 Wire wire = instance.LeftNodes[selectedWireIndex];
                 if (wire != null)
-                {
                     wire.ResetLine(worldPos, false);
-                }
 
                 if (ended)
                 {
@@ -169,12 +160,8 @@ namespace Submerged.BaseGame.Patches
                     {
                         wire.ConnectRight(rightNode);
 
-                        // Sound
                         if (instance.WireSounds != null && instance.WireSounds.Length > 0)
-                        {
-                            int soundIndex = Random.Range(0, instance.WireSounds.Length);
-                            SoundManager.Instance?.PlaySound(instance.WireSounds[soundIndex], false);
-                        }
+                            SoundManager.Instance?.PlaySound(instance.WireSounds[Random.Range(0, instance.WireSounds.Length)], false);
 
                         CheckTask(instance);
                     }
@@ -192,10 +179,8 @@ namespace Submerged.BaseGame.Patches
         private static WireNode GetRightNodeAt(WireMinigame instance, Vector2 pos)
         {
             foreach (var node in instance.RightNodes)
-            {
                 if (node?.hitbox != null && node.hitbox.OverlapPoint(pos))
                     return node;
-            }
             return null;
         }
 
@@ -203,7 +188,6 @@ namespace Submerged.BaseGame.Patches
         {
             instance.CheckTask();
 
-            // Task Completion (as you requested)
             if (instance.MyNormTask != null)
                 instance.MyNormTask.NextStep();
             else if (instance.MyTask != null)
@@ -212,6 +196,7 @@ namespace Submerged.BaseGame.Patches
             instance.StartCoroutine(instance.CoStartClose());
         }
 
+        // Shared helper
         public static bool IsSubmerged()
         {
             return ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged();
