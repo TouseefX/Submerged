@@ -256,13 +256,9 @@ namespace Submerged.BaseGame.Patches
                     return;   // Still wires left to connect.
             }
 
+            // CheckTask() already calls NextStep/Complete internally when all wires match.
+            // Calling NextStep/Complete again here would complete the task twice.
             instance.CheckTask();
-
-            if (instance.MyNormTask != null)
-                instance.MyNormTask.NextStep();
-            else if (instance.MyTask != null)
-                instance.MyTask.Complete();
-
             instance.StartCoroutine(instance.CoStartClose());
         }
 
