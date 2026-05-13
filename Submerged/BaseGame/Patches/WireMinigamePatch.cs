@@ -7,14 +7,39 @@ namespace Submerged.BaseGame.Patches
     [HarmonyPatch(typeof(WireMinigame))]
     public static class WireMinigameAndroidRecreation
     {
-        [HarmonyPatch(nameof(WireMinigame.Begin))]
+        [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close))]
         [HarmonyPrefix]
-        public static bool Begin_Prefix(WireMinigame __instance, PlayerTask task)
+        public static void Close_Prefix(Minigame __instance)
+        {
+            if (__instance is WireMinigame wire && 
+                ShipStatus.Instance != null && 
+                ShipStatus.Instance.IsSubmerged())
+            {
+                CustomWireMinigame.Reset();
+            }
+        }
+
+        // Main Update Patch
+        [HarmonyPatch(typeof(WireMinigame), nameof(WireMinigame.Update))]
+        [HarmonyPrefix]
+        public static bool Update_Prefix(WireMinigame __instance)
         {
             if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) 
                 return true;
 
-            CustomWireMinigame.Setup(__instance, task);
+            // Your requested safety check
+            if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
+            {
+                CustomWireMinigame.ForceCleanup(__instance);
+                CustomWireMinigame.Reset();
+                return false;
+            }
+
+            // Ensure setup and run custom logic
+            CustomWireMinigame.EnsureSetup(__instance);
+            CustomWireMinigame.UpdateAndroid(__instance);
+            __instance.UpdateLights();
+
             return false;
         }
     }
@@ -23,14 +48,23 @@ namespace Submerged.BaseGame.Patches
     {
         private static int selectedWireIndex = -1;
         private static bool isDragging = false;
+        private static bool isSetupDone = false;
 
-        public static void Setup(WireMinigame instance, PlayerTask task)
+        public static void EnsureSetup(WireMinigame instance)
         {
-            instance.Begin(task);
+            if (isSetupDone) return;
+
+            try
+            {
+                var task = instance.MyTask ?? instance.MyNormTask as PlayerTask;
+                if (task != null)
+                    instance.Begin(task);
+            }
+            catch { }
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // Fix different symbols & colors for each wire
+            // Fix colors + symbols
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -64,6 +98,8 @@ namespace Submerged.BaseGame.Patches
 
             if (instance.movingWireGlyphs != null)
                 foreach (var g in instance.movingWireGlyphs) if (g != null) g.SetActive(false);
+
+            isSetupDone = true;
         }
 
         private static void ReRandomizeWires(WireMinigame instance)
@@ -88,20 +124,7 @@ namespace Submerged.BaseGame.Patches
             }
         }
 
-        [HarmonyPatch(typeof(WireMinigame), nameof(WireMinigame.Update))]
-        [HarmonyPrefix]
-        public static bool Update_Prefix(WireMinigame __instance)
-        {
-            if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) 
-                return true;
-
-            UpdateAndroid(__instance);
-            __instance.UpdateLights();
-
-            return false;
-        }
-
-        private static void UpdateAndroid(WireMinigame instance)
+        public static void UpdateAndroid(WireMinigame instance)
         {
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
@@ -190,6 +213,26 @@ namespace Submerged.BaseGame.Patches
                 instance.MyTask.Complete();
 
             instance.StartCoroutine(instance.CoStartClose());
+        }
+
+        public static void ForceCleanup(WireMinigame instance)
+        {
+            // Reset all wires to base position
+            if (instance.LeftNodes != null)
+            {
+                foreach (var wire in instance.LeftNodes)
+                {
+                    if (wire != null)
+                        wire.ResetLine(wire.BaseWorldPos, true);
+                }
+            }
+        }
+
+        public static void Reset()
+        {
+            selectedWireIndex = -1;
+            isDragging = false;
+            isSetupDone = false;
         }
     }
 }
