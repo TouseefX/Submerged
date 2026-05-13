@@ -1,33 +1,49 @@
 using HarmonyLib;
 using UnityEngine;
 using Submerged.Extensions;
+using System;
 
 namespace Submerged.BaseGame.Patches
 {
-    [HarmonyPatch(typeof(WireMinigame))]
-    public static class WireMinigameAndroidRecreation
-    {
-        [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close))]
-        [HarmonyPrefix]
-        public static void Close_Prefix(Minigame __instance)
-        {
-            if (__instance is WireMinigame wire && 
-                ShipStatus.Instance != null && 
-                ShipStatus.Instance.IsSubmerged())
-            {
-                CustomWireMinigame.Reset();
-            }
-        }
+    // ================== CLOSE PATCHES (Both Overloads) ==================
 
-        // Main Update Patch
-        [HarmonyPatch(typeof(WireMinigame), nameof(WireMinigame.Update))]
+    [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { })]
+    public static class WireMinigameClosePatch
+    {
+        public static void Prefix(Minigame __instance)
+        {
+            if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) return;
+            if (__instance is not WireMinigame wire) return;
+
+            CustomWireMinigame.ForceCleanup(wire);
+            CustomWireMinigame.Reset();
+        }
+    }
+
+    [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { typeof(bool) })]
+    public static class WireMinigameCloseBoolPatch
+    {
+        public static void Prefix(Minigame __instance)
+        {
+            if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) return;
+            if (__instance is not WireMinigame wire) return;
+
+            CustomWireMinigame.ForceCleanup(wire);
+            CustomWireMinigame.Reset();
+        }
+    }
+
+    // ================== MAIN UPDATE PATCH ==================
+    [HarmonyPatch(typeof(WireMinigame), nameof(WireMinigame.Update))]
+    public static class WireMinigameUpdatePatch
+    {
         [HarmonyPrefix]
-        public static bool Update_Prefix(WireMinigame __instance)
+        public static bool Prefix(WireMinigame __instance)
         {
             if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged())) 
                 return true;
 
-            // Your requested safety check
+            // Safety check (as you requested)
             if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
             {
                 CustomWireMinigame.ForceCleanup(__instance);
@@ -35,7 +51,6 @@ namespace Submerged.BaseGame.Patches
                 return false;
             }
 
-            // Ensure setup and run custom logic
             CustomWireMinigame.EnsureSetup(__instance);
             CustomWireMinigame.UpdateAndroid(__instance);
             __instance.UpdateLights();
@@ -64,7 +79,7 @@ namespace Submerged.BaseGame.Patches
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // Fix colors + symbols
+            // Fix: Different symbols and colors for each wire
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -217,7 +232,6 @@ namespace Submerged.BaseGame.Patches
 
         public static void ForceCleanup(WireMinigame instance)
         {
-            // Reset all wires to base position
             if (instance.LeftNodes != null)
             {
                 foreach (var wire in instance.LeftNodes)
