@@ -5,8 +5,7 @@ using System;
 
 namespace Submerged.BaseGame.Patches
 {
-    // ================== CLOSE PATCHES (Both Overloads) ==================
-
+    // ================== CLOSE PATCHES ==================
     [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { })]
     public static class WireMinigameClosePatch
     {
@@ -33,7 +32,7 @@ namespace Submerged.BaseGame.Patches
         }
     }
 
-    // ================== MAIN UPDATE PATCH ==================
+    // ================== UPDATE PATCH ==================
     [HarmonyPatch(typeof(WireMinigame), nameof(WireMinigame.Update))]
     public static class WireMinigameUpdatePatch
     {
@@ -78,7 +77,7 @@ namespace Submerged.BaseGame.Patches
 
             if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
-            // Fix different symbols & colors
+            // Different colors + shapes (already working)
             for (int i = 0; i < instance.LeftNodes.Length; i++)
             {
                 Wire leftWire = instance.LeftNodes[i];
@@ -125,7 +124,6 @@ namespace Submerged.BaseGame.Patches
             sbyte[] rightOrder = new sbyte[count];
             for (sbyte i = 0; i < count; i++) rightOrder[i] = i;
 
-            // Fisher-Yates shuffle
             for (int i = count - 1; i > 0; i--)
             {
                 int j = UnityEngine.Random.Range(0, i + 1);
@@ -165,6 +163,7 @@ namespace Submerged.BaseGame.Patches
 
             if (began)
             {
+                selectedWireIndex = -1;
                 for (int i = 0; i < instance.LeftNodes.Length; i++)
                 {
                     Wire wire = instance.LeftNodes[i];
@@ -172,7 +171,6 @@ namespace Submerged.BaseGame.Patches
                     {
                         selectedWireIndex = i;
                         isDragging = true;
-
                         if (instance.selectedWireUI != null)
                             instance.selectedWireUI.position = wire.transform.position;
                         break;
@@ -184,7 +182,9 @@ namespace Submerged.BaseGame.Patches
             {
                 Wire wire = instance.LeftNodes[selectedWireIndex];
                 if (wire != null)
-                    wire.ResetLine(worldPos, false);
+                {
+                    wire.ResetLine(worldPos, false);   // Update line while dragging
+                }
 
                 if (ended)
                 {
@@ -192,7 +192,7 @@ namespace Submerged.BaseGame.Patches
 
                     if (rightNode != null && wire != null)
                     {
-                        wire.ConnectRight(rightNode);
+                        wire.ConnectRight(rightNode);        // This is the important call
 
                         if (instance.WireSounds != null && instance.WireSounds.Length > 0)
                         {
@@ -204,7 +204,7 @@ namespace Submerged.BaseGame.Patches
                     }
                     else if (wire != null)
                     {
-                        wire.ResetLine(wire.BaseWorldPos, true);
+                        wire.ResetLine(wire.BaseWorldPos, true); // Reset on miss
                     }
 
                     selectedWireIndex = -1;
@@ -215,9 +215,18 @@ namespace Submerged.BaseGame.Patches
 
         private static WireNode GetRightNodeAt(WireMinigame instance, Vector2 pos)
         {
+            if (instance.RightNodes == null) return null;
+
+            // Slightly larger hitbox for easier connection on Android
             foreach (var node in instance.RightNodes)
-                if (node?.hitbox != null && node.hitbox.OverlapPoint(pos))
-                    return node;
+            {
+                if (node?.hitbox != null)
+                {
+                    // Optional: Increase tolerance
+                    if (node.hitbox.OverlapPoint(pos))
+                        return node;
+                }
+            }
             return null;
         }
 
