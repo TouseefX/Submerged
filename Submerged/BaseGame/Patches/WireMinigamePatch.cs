@@ -5,6 +5,7 @@ using System;
 
 namespace Submerged.BaseGame.Patches
 {
+    #if ANDROID
     // ================== CLOSE PATCHES ==================
     [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { })]
     public static class WireMinigameClosePatch
@@ -278,4 +279,5 @@ namespace Submerged.BaseGame.Patches
             isSetupDone       = false;
         }
     }
+    #endif
 }
