@@ -22,62 +22,62 @@ public static class MedScanMapChecker
 [HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.HandleRpc))]
 public static class HandleScanSoundRpcPatch
 {
-    private static UnityEngine.AudioClip cachedScanSound;
+    private static AudioClip cachedScanSound;
 
     public static bool Prefix(PlayerControl __instance, byte callId, MessageReader reader)
     {
-        if (!MedScanMapChecker.IsSubmerged()) return;
-        if (callId == CustomRpcCalls.PlayScanSound)
+        if (!MedScanMapChecker.IsSubmerged())
+            return true;
+
+        if (callId != CustomRpcCalls.PlayScanSound)
+            return true;
+
+        byte scanningPlayerId = reader.ReadByte();
+        var gameDataPlayer = GameData.Instance.GetPlayerById(scanningPlayerId);
+        if (gameDataPlayer?.Object == null) 
+            return false;
+
+        PlayerControl scanningPlayer = gameDataPlayer.Object;
+        PlayerControl localPlayer = PlayerControl.LocalPlayer;
+
+        if (localPlayer == null) 
+            return false;
+        
+        var scanningHandler = FloorHandler.GetFloorHandler(scanningPlayer);
+        var localHandler = FloorHandler.GetFloorHandler(localPlayer);
+
+        if (scanningHandler == null || localHandler == null || 
+            scanningHandler.onUpper != localHandler.onUpper)
+            return false;
+        
+        if (cachedScanSound == null)
         {
-            byte scanningPlayerId = reader.ReadByte();
-            
-            var gameDataPlayer = GameData.Instance.GetPlayerById(scanningPlayerId);
-            if (gameDataPlayer == null || gameDataPlayer.Object == null) return false;
-
-            PlayerControl scanningPlayer = gameDataPlayer.Object;
-            PlayerControl localPlayer = PlayerControl.LocalPlayer;
-
-            if (localPlayer == null || scanningPlayer == localPlayer) return false;
-            
-            var scanningHandler = Submerged.Floors.FloorHandler.GetFloorHandler(scanningPlayer);
-            var localHandler = Submerged.Floors.FloorHandler.GetFloorHandler(localPlayer);
-
-            if (scanningHandler == null || localHandler == null) return false;
-            
-            if (scanningHandler.onUpper != localHandler.onUpper)
+            var minigame = Object.FindObjectsOfType<MedScanMinigame>(true).FirstOrDefault();
+            if (minigame != null)
             {
-                return false; 
-            }
-
-            float distance = Vector3.Distance(localPlayer.transform.position, scanningPlayer.transform.position);
-            float maxHearingDistance = 14.0f; 
-
-            if (distance <= maxHearingDistance)
-            {
-                if (cachedScanSound == null)
-                {
-                    var foundMinigame = UnityEngine.Object.FindObjectOfType<MedScanMinigame>();
-                    if (foundMinigame != null)
-                    {
 #if ANDROID
-                        cachedScanSound = foundMinigame.ScanSound;
+                cachedScanSound = minigame.ScanSound;
 #else
-                        cachedScanSound = foundMinigame.scanSound;
+                cachedScanSound = minigame.scanSound;
 #endif
-                    }
-                }
-
-                if (cachedScanSound != null)
-                {
-                    float volumeModifier = 1.0f - (distance / maxHearingDistance); 
-                    float finalVolume = 0.8f * volumeModifier;
-
-                    SoundManager.Instance.PlaySound(cachedScanSound, false, finalVolume);
-                }
             }
-            return false; 
         }
-        return true; 
+
+        if (cachedScanSound == null || SoundManager.Instance == null)
+            return false;
+
+        float distance = Vector3.Distance(localPlayer.transform.position, scanningPlayer.transform.position);
+        const float maxHearingDistance = 14f;
+
+        if (distance > maxHearingDistance)
+            return false;
+        
+        float volumeModifier = 1f - (distance / maxHearingDistance);
+        float finalVolume = Mathf.Lerp(0.25f, 0.9f, volumeModifier); // good range
+        
+        SoundManager.Instance.PlaySound(cachedScanSound, false, finalVolume);
+
+        return false;
     }
 }
 
@@ -331,7 +331,7 @@ public static class MedScanMinigamePatch
             {
                 if (visualTasks)
                 {
-                    var writer = AmongUsClient.Instance.StartRpcImmediately(player.NetId, CustomRpcCalls.PlayScanSound, SendOption.Reliable, -1);
+                    var writer = AmongUsClient.Instance.StartRpcImmediately(player.NetId, (byte)CustomRpcCalls.PlayScanSound, SendOption.Reliable, -1);
                     writer.Write(player.PlayerId); 
                     AmongUsClient.Instance.FinishRpcImmediately(writer);
                 }
