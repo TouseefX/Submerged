@@ -26,6 +26,7 @@ public static class HandleScanSoundRpcPatch
 
     public static bool Prefix(PlayerControl __instance, byte callId, MessageReader reader)
     {
+        if (!MedScanMapChecker.IsSubmerged()) return;
         if (callId == CustomRpcCalls.PlayScanSound)
         {
             byte scanningPlayerId = reader.ReadByte();
