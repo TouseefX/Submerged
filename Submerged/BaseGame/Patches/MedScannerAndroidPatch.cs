@@ -9,6 +9,7 @@ using Submerged.SpawnIn;
 using Submerged.SpawnIn.Enums;
 using Submerged.Extensions;
 using TMPro;
+using Hazel;
 
 public static class MedScanMapChecker
 {
@@ -23,9 +24,8 @@ public static class HandleScanSoundRpcPatch
 {
     private static UnityEngine.AudioClip cachedScanSound;
 
-    public static bool Prefix([Harmonify.Component] PlayerControl __instance, [Harmony.Argument(0)] byte callId, [Harmony.Argument(1)] MessageReader reader)
+    public static bool Prefix(PlayerControl __instance, byte callId, MessageReader reader)
     {
-        if (!MedScanMapChecker.IsSubmerged()) return;
         if (callId == CustomRpcCalls.PlayScanSound)
         {
             byte scanningPlayerId = reader.ReadByte();
@@ -79,6 +79,7 @@ public static class HandleScanSoundRpcPatch
         return true; 
     }
 }
+
 #if ANDROID
 [HarmonyPatch(typeof(ShipStatus), nameof(ShipStatus.Start))]
 public static class ShipStatusStartPatch
