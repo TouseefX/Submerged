@@ -56,11 +56,7 @@ public static class HandleScanSoundRpcPatch
             var minigame = UnityEngine.Object.FindObjectsOfType<MedScanMinigame>(true).FirstOrDefault();
             if (minigame != null)
             {
-#if ANDROID
                 cachedScanSound = minigame.ScanSound;
-#else
-                cachedScanSound = minigame.scanSound;
-#endif
             }
         }
 
