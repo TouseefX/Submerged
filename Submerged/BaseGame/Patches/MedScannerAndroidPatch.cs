@@ -26,7 +26,6 @@ public static class HandleScanSoundRpcPatch
 
     public static bool Prefix(PlayerControl __instance, byte callId, MessageReader reader)
     {
-        if (!MedScanMapChecker.IsSubmerged()) return;
         if (callId == CustomRpcCalls.PlayScanSound)
         {
             byte scanningPlayerId = reader.ReadByte();
@@ -39,8 +38,8 @@ public static class HandleScanSoundRpcPatch
 
             if (localPlayer == null || scanningPlayer == localPlayer) return false;
             
-            var scanningHandler = FloorHandler.GetFloorHandler(scanningPlayer);
-            var localHandler = FloorHandler.GetFloorHandler(localPlayer);
+            var scanningHandler = Submerged.Floors.FloorHandler.GetFloorHandler(scanningPlayer);
+            var localHandler = Submerged.Floors.FloorHandler.GetFloorHandler(localPlayer);
 
             if (scanningHandler == null || localHandler == null) return false;
             
@@ -56,18 +55,14 @@ public static class HandleScanSoundRpcPatch
             {
                 if (cachedScanSound == null)
                 {
-                    var minigameService = DestroyableSingleton<MinigameService>.Instance;
-                    if (minigameService != null)
+                    var foundMinigame = UnityEngine.Object.FindObjectOfType<MedScanMinigame>();
+                    if (foundMinigame != null)
                     {
-                        var minigamePrefab = minigameService.GetMinigamePrefab(TaskTypes.SubmitScan);
-                        if (minigamePrefab != null)
-                        {
-                            var scanGameComponent = minigamePrefab.GetComponent<MedScanMinigame>();
-                            if (scanGameComponent != null)
-                            {
-                                cachedScanSound = scanGameComponent.ScanSound;
-                            }
-                        }
+#if ANDROID
+                        cachedScanSound = foundMinigame.ScanSound;
+#else
+                        cachedScanSound = foundMinigame.scanSound;
+#endif
                     }
                 }
 
