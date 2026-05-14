@@ -24,6 +24,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 6
+          cache: true
 
       - name: Restore NuGet packages
         run: dotnet restore -p:Platform=Android
