@@ -29,7 +29,8 @@ jobs:
         run: |
           dotnet restore -p:Platform=Android \
             --source "https://api.nuget.org/v3/index.json" \
-            --source "https://nuget.bepinex.dev/v3/index.json"
+            --source "https://nuget.bepinex.dev/v3/index.json" \
+            --source "https://nuget.reactor.gg/v3/index.json"
       
       - name: Build Debug
         run: dotnet build -c Debug -p:Platform=Android -p:DefineConstants=DEBUG%3bTRACE%3bANDROID --no-restore
