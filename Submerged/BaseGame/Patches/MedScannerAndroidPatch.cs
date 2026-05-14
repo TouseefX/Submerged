@@ -332,11 +332,8 @@ public static class MedScanMinigamePatch
                     writer.Write(player.PlayerId); 
                     AmongUsClient.Instance.FinishRpcImmediately(writer);
                 }
-                else
-                {
-                    SoundManager.Instance.PlaySound(__instance.ScanSound, false, 0.8f);
-                }
                 
+                SoundManager.Instance.PlaySound(__instance.ScanSound, false, 0.8f);
                 soundPlaying = true;
             }
             
