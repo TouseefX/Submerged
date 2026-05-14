@@ -29,18 +29,19 @@ public static class HandleScanSoundRpcPatch
         if (!MedScanMapChecker.IsSubmerged())
             return true;
 
-        if (callId != CustomRpcCalls.PlayScanSound)
+        if (callId != 215)
             return true;
 
         byte scanningPlayerId = reader.ReadByte();
+
         var gameDataPlayer = GameData.Instance.GetPlayerById(scanningPlayerId);
-        if (gameDataPlayer?.Object == null) 
+        if (gameDataPlayer?.Object == null)
             return false;
 
         PlayerControl scanningPlayer = gameDataPlayer.Object;
         PlayerControl localPlayer = PlayerControl.LocalPlayer;
 
-        if (localPlayer == null) 
+        if (localPlayer == null)
             return false;
         
         var scanningHandler = FloorHandler.GetFloorHandler(scanningPlayer);
@@ -65,16 +66,16 @@ public static class HandleScanSoundRpcPatch
 
         if (cachedScanSound == null || SoundManager.Instance == null)
             return false;
-
+        
         float distance = Vector3.Distance(localPlayer.transform.position, scanningPlayer.transform.position);
         const float maxHearingDistance = 14f;
 
         if (distance > maxHearingDistance)
             return false;
-        
+
         float volumeModifier = 1f - (distance / maxHearingDistance);
-        float finalVolume = Mathf.Lerp(0.25f, 0.9f, volumeModifier); // good range
-        
+        float finalVolume = Mathf.Lerp(0.25f, 0.95f, volumeModifier);
+
         SoundManager.Instance.PlaySound(cachedScanSound, false, finalVolume);
 
         return false;
@@ -331,7 +332,7 @@ public static class MedScanMinigamePatch
             {
                 if (visualTasks)
                 {
-                    var writer = AmongUsClient.Instance.StartRpcImmediately(player.NetId, (byte)CustomRpcCalls.PlayScanSound, SendOption.Reliable, -1);
+                    var writer = AmongUsClient.Instance.StartRpcImmediately(player.NetId, 215, SendOption.Reliable, -1);
                     writer.Write(player.PlayerId); 
                     AmongUsClient.Instance.FinishRpcImmediately(writer);
                 }
