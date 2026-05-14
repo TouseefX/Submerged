@@ -25,8 +25,12 @@ jobs:
           dotnet-version: 9
 
       - name: Restore NuGet packages
-        run: dotnet restore
-
+        run: |
+          dotnet restore \
+            --source "https://api.nuget.org/v3/index.json" \
+            --source "https://nuget.bepinex.dev/v3/index.json" \
+            --source "https://nuget.reactor.gg/v3/index.json"
+      
       - name: Build Debug
         run: dotnet build -c Debug --no-restore
 
