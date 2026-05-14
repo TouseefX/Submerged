@@ -3,7 +3,6 @@ using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
-using UnityEngine.Object;
 using Submerged.Enums;
 using Submerged.Floors;
 using Submerged.SpawnIn;
@@ -54,7 +53,7 @@ public static class HandleScanSoundRpcPatch
         
         if (cachedScanSound == null)
         {
-            var minigame = Object.FindObjectsOfType<MedScanMinigame>(true).FirstOrDefault();
+            var minigame = UnityEngine.Object.FindObjectsOfType<MedScanMinigame>(true).FirstOrDefault();
             if (minigame != null)
             {
 #if ANDROID
