@@ -1,9 +1,10 @@
-#if ANDROID
 using System;
 using System.Linq;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
+using Submerged.Enums;
+using Submerged.Floors;
 using Submerged.SpawnIn;
 using Submerged.SpawnIn.Enums;
 using Submerged.Extensions;
@@ -17,6 +18,68 @@ public static class MedScanMapChecker
     }
 }
 
+[HarmonyPatch(typeof(PlayerControl), nameof(PlayerControl.HandleRpc))]
+public static class HandleScanSoundRpcPatch
+{
+    private static UnityEngine.AudioClip cachedScanSound;
+
+    public static bool Prefix([Harmonify.Component] PlayerControl __instance, [Harmony.Argument(0)] byte callId, [Harmony.Argument(1)] MessageReader reader)
+    {
+        if (!MedScanMapChecker.IsSubmerged()) return;
+        if (callId == CustomRpcCalls.PlayScanSound)
+        {
+            byte scanningPlayerId = reader.ReadByte();
+            
+            var gameDataPlayer = GameData.Instance.GetPlayerById(scanningPlayerId);
+            if (gameDataPlayer == null || gameDataPlayer.Object == null) return false;
+
+            PlayerControl scanningPlayer = gameDataPlayer.Object;
+            PlayerControl localPlayer = PlayerControl.LocalPlayer;
+
+            if (localPlayer == null || scanningPlayer == localPlayer) return false;
+            
+            var scanningHandler = FloorHandler.GetFloorHandler(scanningPlayer);
+            var localHandler = FloorHandler.GetFloorHandler(localPlayer);
+
+            if (scanningHandler == null || localHandler == null) return false;
+            
+            if (scanningHandler.onUpper != localHandler.onUpper)
+            {
+                return false; 
+            }
+
+            float distance = Vector3.Distance(localPlayer.transform.position, scanningPlayer.transform.position);
+            float maxHearingDistance = 14.0f; 
+
+            if (distance <= maxHearingDistance)
+            {
+                if (cachedScanSound == null)
+                {
+                    var minigamePrefab = DestroyableSingleton<MinigameProvider>.Instance.GetMinigamePrefab(TaskTypes.SubmitScan);
+                    if (minigamePrefab != null)
+                    {
+                        var scanGameComponent = minigamePrefab.GetComponent<MedScanMinigame>();
+                        if (scanGameComponent != null)
+                        {
+                            cachedScanSound = scanGameComponent.ScanSound;
+                        }
+                    }
+                }
+
+                if (cachedScanSound != null)
+                {
+                    float volumeModifier = 1.0f - (distance / maxHearingDistance); 
+                    float finalVolume = 0.8f * volumeModifier;
+
+                    SoundManager.Instance.PlaySound(cachedScanSound, false, finalVolume);
+                }
+            }
+            return false; 
+        }
+        return true; 
+    }
+}
+#if ANDROID
 [HarmonyPatch(typeof(ShipStatus), nameof(ShipStatus.Start))]
 public static class ShipStatusStartPatch
 {
@@ -261,13 +324,23 @@ public static class MedScanMinigamePatch
                 else             player.SetScanner(true, 0);
                 scannerIsOn = true;
             }
-
+            
             if (!soundPlaying && __instance.ScanSound != null)
             {
-                SoundManager.Instance.PlaySound(__instance.ScanSound, true, 0.8f);
+                if (visualTasks)
+                {
+                    var writer = AmongUsClient.Instance.StartRpcImmediately(player.NetId, CustomRpcCalls.PlayScanSound, SendOption.Reliable, -1);
+                    writer.Write(player.PlayerId); 
+                    AmongUsClient.Instance.FinishRpcImmediately(writer);
+                }
+                else
+                {
+                    SoundManager.Instance.PlaySound(__instance.ScanSound, false, 0.8f);
+                }
+                
                 soundPlaying = true;
             }
-
+            
             return false;
         }
 
