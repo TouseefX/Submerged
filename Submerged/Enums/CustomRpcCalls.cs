@@ -7,5 +7,6 @@ public static class CustomRpcCalls
     public const byte RequestChangeFloor = 211;
     public const byte EngineVent = 213;
     public const byte OxygenDeath = 214;
+    public const byte PlayScanSound = 215;
     // ReSharper restore InconsistentNaming
 }
