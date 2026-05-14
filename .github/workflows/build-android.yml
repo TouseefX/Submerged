@@ -26,7 +26,7 @@ jobs:
           dotnet-version: 6
 
       - name: Restore NuGet packages
-        run: dotnet restore -p:Platform=Android
+        run: dotnet restore -p:Platform=Android --source "https://www.nuget.org/api/v2"
 
       - name: Build Debug
         run: dotnet build -c Debug -p:Platform=Android -p:DefineConstants=DEBUG%3bTRACE%3bANDROID --no-restore
