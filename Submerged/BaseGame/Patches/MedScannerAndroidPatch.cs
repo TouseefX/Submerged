@@ -26,6 +26,7 @@ public static class HandleScanSoundRpcPatch
 
     public static bool Prefix(PlayerControl __instance, byte callId, MessageReader reader)
     {
+        if (!MedScanMapChecker.IsSubmerged()) return;
         if (callId == CustomRpcCalls.PlayScanSound)
         {
             byte scanningPlayerId = reader.ReadByte();
@@ -55,13 +56,17 @@ public static class HandleScanSoundRpcPatch
             {
                 if (cachedScanSound == null)
                 {
-                    var minigamePrefab = DestroyableSingleton<MinigameProvider>.Instance.GetMinigamePrefab(TaskTypes.SubmitScan);
-                    if (minigamePrefab != null)
+                    var minigameService = DestroyableSingleton<MinigameService>.Instance;
+                    if (minigameService != null)
                     {
-                        var scanGameComponent = minigamePrefab.GetComponent<MedScanMinigame>();
-                        if (scanGameComponent != null)
+                        var minigamePrefab = minigameService.GetMinigamePrefab(TaskTypes.SubmitScan);
+                        if (minigamePrefab != null)
                         {
-                            cachedScanSound = scanGameComponent.ScanSound;
+                            var scanGameComponent = minigamePrefab.GetComponent<MedScanMinigame>();
+                            if (scanGameComponent != null)
+                            {
+                                cachedScanSound = scanGameComponent.ScanSound;
+                            }
                         }
                     }
                 }
