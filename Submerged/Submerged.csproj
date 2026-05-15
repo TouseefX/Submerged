@@ -13,6 +13,9 @@
         <LangVersion>preview</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
+        <TrimMode>link</TrimMode>
+        <OptimizationPreference>Speed</OptimizationPreference>
+
         <DebugType>embedded</DebugType>
         <DebugSymbols>true</DebugSymbols>
         <Configurations>Debug;Release</Configurations>
@@ -20,7 +23,15 @@
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     </PropertyGroup>
 
-    <PropertyGroup Condition="'$(Platform)'=='Android'">
+    <PropertyGroup Condition="'$(Platform)'=='Android' And '$(Configuration)'=='Release'">
+        <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
+        <Optimize>true</Optimize>
+        <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+        <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Platform)'=='Android' And '$(Configuration)'=='Debug'">
         <DefineConstants>$(DefineConstants);ANDROID</DefineConstants>
     </PropertyGroup>
 
