@@ -194,40 +194,41 @@ namespace Submerged.BaseGame.Patches
                 }
             }
 
-            // ---- While dragging: stretch line; on release attempt connection ----
+            // ---- While dragging: stretch line; attempt connection on hover OR release ----
             if (isDragging && selectedWireIndex >= 0 && selectedWireIndex < instance.LeftNodes.Length)
             {
                 Wire wire = instance.LeftNodes[selectedWireIndex];
 
                 if (wire != null)
                     wire.ResetLine(worldPos, false);
+                
+                WireNode rightNode = GetRightNodeAt(instance, worldPos);
 
-                if (ended)
+                if (rightNode != null && wire != null)
                 {
-                    WireNode rightNode = GetRightNodeAt(instance, worldPos);
+                    wire.ConnectRight(rightNode);
 
-                    if (rightNode != null && wire != null)
+                    if (selectedWireIndex < instance.ActualWires.Length)
+                        instance.ActualWires[selectedWireIndex] = rightNode.WireId;
+
+                    if (instance.WireSounds != null && instance.WireSounds.Length > 0)
                     {
-                        wire.ConnectRight(rightNode);
-
-                        if (selectedWireIndex < instance.ActualWires.Length)
-                            instance.ActualWires[selectedWireIndex] = rightNode.WireId;
-
-                        if (instance.WireSounds != null && instance.WireSounds.Length > 0)
-                        {
-                            int idx = UnityEngine.Random.Range(0, instance.WireSounds.Length);
-                            SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
-                        }
-
-                        TryCompleteTask(instance);
+                        int idx = UnityEngine.Random.Range(0, instance.WireSounds.Length);
+                        SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
                     }
-                    else if (wire != null)
-                    {
-                        // Nothing hit – snap wire back to its origin.
+                    
+                    wire.ResetLine(rightNode.transform.position, true);
+
+                    selectedWireIndex = -1;
+                    isDragging        = false;
+
+                    TryCompleteTask(instance);
+                }
+                else if (ended)
+                {
+                    if (wire != null)
                         wire.ResetLine(wire.BaseWorldPos, true);
-                    }
 
-                    // Release drag state AFTER handling the drop, not before.
                     selectedWireIndex = -1;
                     isDragging        = false;
                 }
