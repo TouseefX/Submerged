@@ -217,7 +217,7 @@ namespace Submerged.BaseGame.Patches
                         SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
                     }
                     
-                    wire.ResetLine(rightNode.transform.position, true);
+                    //wire.ResetLine(rightNode.transform.position, true);
 
                     selectedWireIndex = -1;
                     isDragging        = false;
