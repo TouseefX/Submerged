@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Hazel;
 using Il2CppInterop.Runtime.Injection;
 using Reactor.Utilities.Attributes;
@@ -40,7 +40,8 @@ public sealed class SubmarineElevatorSystem(nint ptr) : CppObject(ptr), AU.ISyst
         tandemSystemType = tandemElevator;
     }
 
-    private SubmarineElevatorSystem Tandem => field ??= ShipStatus.Instance.Systems[tandemSystemType].Cast<SubmarineElevatorSystem>();
+    private SubmarineElevatorSystem _tandem;
+    private SubmarineElevatorSystem Tandem => _tandem ??= ShipStatus.Instance.Systems[tandemSystemType].Cast<SubmarineElevatorSystem>();
 
     public bool IsDirty { get; private set; }
 
