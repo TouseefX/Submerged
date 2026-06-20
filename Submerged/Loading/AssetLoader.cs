@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using BepInEx.Unity.IL2CPP.Utils;
@@ -94,8 +94,23 @@ public sealed class AssetLoader(nint ptr) : MonoBehaviour(ptr)
             Submerged = submerged;
 
             List<InnerNetObject> nonAddrList = AmongUsClient.Instance.NonAddressableSpawnableObjects.ToList();
-            nonAddrList.Add(Submerged.GetComponent<ShipStatus>());
-            AmongUsClient.Instance.NonAddressableSpawnableObjects = nonAddrList.ToArray();
+            ShipStatus submergedShip = Submerged.GetComponent<ShipStatus>();
+
+            var spawnables = AmongUsClient.Instance.SpawnableObjects;
+            for (int i = 0; i < spawnables.Count; i++)
+            {
+                if (spawnables[i] != null && spawnables[i].m_AssetGUID == "Submerged")
+                {
+                    submergedShip.SpawnId = (uint)i;
+                    break;
+                }
+            }
+
+            if (!nonAddrList.Contains(submergedShip))
+            {
+                nonAddrList.Add(submergedShip);
+                AmongUsClient.Instance.NonAddressableSpawnableObjects = nonAddrList.ToArray();
+            }
         }
         catch (Exception e)
         {
