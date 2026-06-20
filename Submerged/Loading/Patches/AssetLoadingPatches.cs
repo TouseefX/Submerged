@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using BepInEx.Unity.IL2CPP.Utils;
 using HarmonyLib;
 using Submerged.Map;
@@ -17,13 +17,15 @@ public static class AssetLoadingPatches
     [HarmonyPostfix]
     public static void AddMapToAmongUsClientPatch(AmongUsClient __instance)
     {
+        if (AmongUsClient.Instance != __instance) return;
+
         __instance.StartCoroutine(MapLoader.LoadMaps());
 
         if (__instance.ShipPrefabs.Count < 7)
         {
             AssetReference assetReference = new("Submerged");
-            AmongUsClient.Instance.ShipPrefabs.Add(assetReference);
-            AmongUsClient.Instance.SpawnableObjects = AmongUsClient.Instance.SpawnableObjects.AddItem(assetReference).ToArray();
+            __instance.ShipPrefabs.Add(assetReference);
+            __instance.SpawnableObjects = __instance.SpawnableObjects.AddItem(assetReference).ToArray();
         }
 
         if (!Constants.MapNames.Contains("Submerged")) Constants.MapNames = Constants.MapNames.AddItem("Submerged").ToArray();
