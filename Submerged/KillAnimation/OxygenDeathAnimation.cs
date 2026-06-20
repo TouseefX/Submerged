@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BepInEx.Unity.IL2CPP.Utils.Collections;
 using Reactor.Utilities.Attributes;
 using Submerged.BaseGame;
