@@ -1,6 +1,7 @@
 using HarmonyLib;
 using Submerged.Extensions;
 using Submerged.Map;
+using Submerged.Vents;
 using UnityEngine;
 
 namespace Submerged.Floors.Patches;
@@ -22,6 +23,10 @@ public static class RoleTeleportFloorPatches
     {
         if (!ShipStatus.Instance || !ShipStatus.Instance.IsSubmerged()) return;
         if (!SubmarineStatus.instance || SubmarinePlayerFloorSystem.Instance == null) return;
+
+        // Submerged's own vent/floor transitions snap the player with a MAP_OFFSET adjustment and manage the
+        // floor themselves; don't fight them or cross-floor vents break.
+        if (VentPatchData.InTransition) return;
 
         PlayerControl player = cnt.myPlayer;
         if (!player || !player.AmOwner) return;
