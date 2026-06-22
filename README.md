@@ -4,7 +4,9 @@
 
 Submerged is a mod for Among Us which adds a new map into the game.
 
-im not that good with github but enjoy the mira patch - twist
+## im not that good with github but enjoy the mira patch - twist
+## Android Patches and newer bepinex support added - touseefx
+
 
 ## Features
 
@@ -69,23 +71,15 @@ The table below lists the most recent Submerged release for each Among Us versio
 
 # Dependencies
 
-Submerged depends on the following mods and modding tools in order to function properly:
+This Fork of Submerged depends on the following mods and modding tools in order to function properly:
 
 | Mod                                                       | Version           |
 |-----------------------------------------------------------|-------------------|
-| [BepInEx](https://builds.bepinex.dev/projects/bepinex_be) | `v6.0.0-be.735`   |
-| [Reactor](https://github.com/nuclearpowered/reactor)      | `v2.5.0` or later |
+| [BepInEx](https://builds.bepinex.dev/projects/bepinex_be) | `v6.0.0-be.783`   |
+| [Reactor](https://github.com/nuclearpowered/reactor)      | `v2.5.1` or later |
 
 > [!Note]
 > If you are using the Microsoft Store version of Among Us, you will need to download the `Unity (IL2CPP) for Windows (x64) games` version of BepInEx. Otherwise, you will need to download the `Unity (IL2CPP) for Windows (x86) games` version.
-
-# Installation
-
-**This mod is not compatible with mobile or console versions of Among Us.**
-
-This mod is only guaranteed to work on Windows operating systems. We have no plans on ensuring compatibility with Linux-based operating systems or Mac.
-
-This mod has been tested and works with the Steam, Epic, itch.io and Microsoft Store versions of Among Us. We do not support or endorse using a pirated version of Among Us with Submerged.
 
 ## Installation Steps
 
