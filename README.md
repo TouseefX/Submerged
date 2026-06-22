@@ -4,8 +4,8 @@
 
 Submerged is a mod for Among Us which adds a new map into the game.
 
-## im not that good with github but enjoy the mira patch - twist
-## Android Patches and newer bepinex support added - touseefx
+### im not that good with github but enjoy the mira patch - twist
+### Android Patches and newer bepinex support added - touseefx
 
 
 ## Features
