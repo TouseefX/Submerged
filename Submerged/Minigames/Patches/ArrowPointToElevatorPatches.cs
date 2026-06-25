@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using HarmonyLib;
 using Submerged.BaseGame;
 using Submerged.Elevators.Objects;
@@ -23,4 +23,14 @@ public static class ArrowBehaviourUpdatePositionPatch
 
     [Obsolete("Use MultifloorArrowBehaviour.GetElevatorPosition instead. This method will be removed in a future release.")]
     public static Vector3 GetElevatorPosition(ArrowBehaviour __instance) => MultifloorArrowBehaviour.GetElevatorPosition(__instance.target);
+
+    [HarmonyPatch(typeof(ArrowBehaviour), nameof(ArrowBehaviour.Update))]
+    [HarmonyPrefix]
+    public static void UpdatePatch(ArrowBehaviour __instance)
+    {
+        if (!ShipStatus.Instance || !ShipStatus.Instance.IsSubmerged()) return;
+
+        MultifloorArrowBehaviour multifloor = __instance.GetComponent<MultifloorArrowBehaviour>();
+        if (multifloor) multifloor.Update();
+    }
 }
