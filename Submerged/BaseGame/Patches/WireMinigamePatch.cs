@@ -39,6 +39,9 @@ namespace Submerged.BaseGame.Patches
                 return false;
             }
 
+            // This is a full recode of WireMinigame: the game's native Update is broken, so we
+            // run our own touch/mouse/gamepad logic (with the detach-reconnect cooldown) and
+            // never hand control back to the original Update.
             CustomWireMinigame.EnsureSetup(__instance);
             CustomWireMinigame.UpdateAndroid(__instance);
             __instance.UpdateLights();
@@ -55,9 +58,17 @@ namespace Submerged.BaseGame.Patches
         private static bool   grabbedWasConnected = false;
         private static Camera cachedCamera;
 
+        // Detach cooldown: after detaching from a right node, don't immediately
+        // reconnect to that same node. Prevents the "detach -> snaps back" bug.
+        private const float DetachCooldown       = 0.35f;
+        private static float detachCooldownTimer = 0f;
+        private static sbyte lastDetachedRightNode = -1;
+
         // ---- Controller (Xbox) support ----
-        // LS = move cursor, hold X (Joystick Button 2) to grab/move a wire,
+        // Left stick = move cursor, hold X to grab/move a wire,
         // release over a right node to connect or over empty space to detach if connected.
+        // The stick is read from the game's NATIVE Controller API (reliable on Android IL2CPP);
+        // raw UnityEngine.Input is only used as a desktop fallback. Button = Joystick Button 2 (X).
         private const float ControllerSpeed     = 9f;
         private static Vector2 controllerCursor    = Vector2.zero;
         private static bool   controllerCursorInit = false;
@@ -180,18 +191,18 @@ namespace Submerged.BaseGame.Patches
             bool ended = false;
             Vector2 worldPos = default;
 
-            // Read began/ended as one-shot events but do NOT overwrite the isDragging state
-            // from Input.GetMouseButton (it returns false on the release frame, which previously
-            // made the dragging block skip and let wires phase through).
+            // Detach cooldown ticks down every frame.
+            if (detachCooldownTimer > 0f)
+                detachCooldownTimer -= Time.deltaTime;
 
-            // Controller (Xbox) buttons: X = Joystick Button 2 (also try Joystick1Button2).
-            bool xHeld = Input.GetKey(KeyCode.JoystickButton2) || Input.GetKey(KeyCode.Joystick1Button2);
-            bool xDown = Input.GetKeyDown(KeyCode.JoystickButton2) || Input.GetKeyDown(KeyCode.Joystick1Button2);
-            bool xUp   = Input.GetKeyUp(KeyCode.JoystickButton2)   || Input.GetKeyUp(KeyCode.Joystick1Button2);
-            float lsX = Input.GetAxis("Horizontal");
-            float lsY = Input.GetAxis("Vertical");
-            bool lsActive = Mathf.Abs(lsX) > 0.15f || Mathf.Abs(lsY) > 0.15f;
-            bool controllerInput = xHeld || xDown || lsActive;
+            // ---- Controller (Xbox) input ----
+            // Gamepad is routed through Rewired. We read it at the low level
+            // (axis 0/1 = left stick, button 2 = Xbox X) so it works regardless of whether
+            // Rewired feeds Unity's Input. Falls back to raw UnityEngine.Input if Rewired
+            // isn't reachable. (AmongUs.Controller is only the TOUCH handler â€” no gamepad API,
+            // and the game's native Update is intentionally replaced, so we self-contain it.)
+            Vector2 stick = ReadGamepadStick(out bool xDown, out bool xUp);
+            bool ctrlActivity = stick.sqrMagnitude > 1e-4f || xDown || xUp;
 
             bool touchActive = Input.touchCount > 0;
             bool mouseActive = Input.GetMouseButton(0) || Input.GetMouseButtonDown(0);
@@ -213,7 +224,7 @@ namespace Submerged.BaseGame.Patches
                 if (began || isDragging)
                     worldPos = cam.ScreenToWorldPoint(Input.mousePosition);
             }
-            else if (controllerInput || controllerEngaged)
+            else if (ctrlActivity || controllerEngaged)
             {
                 controllerEngaged = true;
 
@@ -224,11 +235,11 @@ namespace Submerged.BaseGame.Patches
                 }
 
                 // Free cursor driven by the left stick.
-                controllerCursor += new Vector2(lsX, lsY) * ControllerSpeed * Time.deltaTime;
+                controllerCursor += new Vector2(stick.x, stick.y) * ControllerSpeed * Time.deltaTime;
                 worldPos = controllerCursor;
 
                 began = xDown; // grab on X press
-                ended  = xUp;   // drop on X release
+                ended  = xUp;  // drop on X release
 
                 // Highlight the wire currently under the cursor (when not dragging).
                 if (!isDragging)
@@ -278,7 +289,10 @@ namespace Submerged.BaseGame.Patches
 
                 WireNode rightNode = GetRightNodeAt(rightNodes, worldPos);
 
-                if (rightNode != null && wire != null)
+                // Don't reconnect to the node we just detached from until the cooldown elapses.
+                bool blocked = detachCooldownTimer > 0f && rightNode != null && rightNode.WireId == lastDetachedRightNode;
+
+                if (rightNode != null && wire != null && !blocked)
                 {
                     wire.ConnectRight(rightNode);
 
@@ -303,7 +317,11 @@ namespace Submerged.BaseGame.Patches
                     // cancel the drag (no connection was ever made).
                     if (grabbedWasConnected && selectedWireIndex < instance.ActualWires.Length)
                     {
+                        // Capture the node we're leaving BEFORE clearing the wire.
+                        lastDetachedRightNode = instance.ActualWires[selectedWireIndex];
                         instance.ActualWires[selectedWireIndex] = -1;
+                        detachCooldownTimer = DetachCooldown;
+
                         if (wire != null)
                         {
                             wire.ResetLine(wire.BaseWorldPos, true);
@@ -388,6 +406,8 @@ namespace Submerged.BaseGame.Patches
             isSetupDone       = false;
             grabbedWasConnected = false;
             cachedCamera     = null; // force a fresh Camera.main lookup on next open
+            detachCooldownTimer  = 0f;
+            lastDetachedRightNode = -1;
             controllerCursor    = Vector2.zero;
             controllerCursorInit = false;
             controllerEngaged   = false;
@@ -398,6 +418,44 @@ namespace Submerged.BaseGame.Patches
             if (cachedCamera == null)
                 cachedCamera = Camera.main;
             return cachedCamera;
+        }
+
+        // Read the gamepad through Rewired's low-level API (no reliance on action names,
+        // which are stripped from the IL2CPP dump). Axis 0/1 = left stick, button 2 = Xbox X.
+        // Falls back to raw UnityEngine.Input if Rewired isn't reachable. Edge-detects the
+        // X button so began/ended (grab/drop) fire once per press.
+        private static bool prevXButton = false;
+        private static Vector2 ReadGamepadStick(out bool xDown, out bool xUp)
+        {
+            xDown = false;
+            xUp   = false;
+            Vector2 stick = Vector2.zero;
+            bool xNow = false;
+            bool read  = false;
+
+            try
+            {
+                var player = Rewired.ReInput.players.GetPlayer(0);
+                if (player != null && player.controllers.Joysticks.Count > 0)
+                {
+                    var js = player.controllers.Joysticks[0];
+                    stick = new Vector2(js.GetAxisValue(0), js.GetAxisValue(1));
+                    xNow = js.GetButtonValue(2);
+                    read  = true;
+                }
+            }
+            catch { }
+
+            if (!read)
+            {
+                stick = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
+                xNow = Input.GetKey(KeyCode.JoystickButton2) || Input.GetKey(KeyCode.Joystick1Button2);
+            }
+
+            xDown = xNow && !prevXButton;
+            xUp   = !xNow && prevXButton;
+            prevXButton = xNow;
+            return stick;
         }
     }
     #endif
