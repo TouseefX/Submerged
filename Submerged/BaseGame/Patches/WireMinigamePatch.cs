@@ -435,13 +435,38 @@ namespace Submerged.BaseGame.Patches
 
             try
             {
-                var player = Rewired.ReInput.players.GetPlayer(0);
-                if (player != null && player.controllers.Joysticks.Count > 0)
+                // Among Us maps the local human to a single Rewired player. Resolve it from the
+                // local PlayerControl's PlayerId (the Rewired player id) and fall back to player 0
+                // if the local player isn't available yet (e.g. before spawn / on a non-host client).
+                var rwPlayer = Rewired.ReInput.players.GetPlayer(
+                    PlayerControl.LocalPlayer != null ? (int)PlayerControl.LocalPlayer.PlayerId : 0);
+
+                if (rwPlayer == null)
+                    rwPlayer = Rewired.ReInput.players.GetPlayer(0);
+
+                // IList<Joystick> has no Count in IL2CPP-interop, so use joystickCount + index.
+                // If the local player's pad isn't found, scan every player for one with a joystick.
+                if (rwPlayer != null && rwPlayer.controllers.joystickCount <= 0)
                 {
-                    var js = player.controllers.Joysticks[0];
-                    stick = new Vector2(js.GetAxisValue(0), js.GetAxisValue(1));
-                    xNow = js.GetButtonValue(2);
-                    read  = true;
+                    int pc = Rewired.ReInput.players.playerCount;
+                    for (int p = 0; p < pc; p++)
+                    {
+                        var cand = Rewired.ReInput.players.GetPlayer(p);
+                        if (cand != null && cand.controllers.joystickCount > 0) { rwPlayer = cand; break; }
+                    }
+                }
+
+                if (rwPlayer != null && rwPlayer.controllers.joystickCount > 0)
+                {
+                    var js = rwPlayer.controllers.Joysticks[0];
+                    if (js != null)
+                    {
+                        // Joystick exposes GetAxis(int) / GetButton(int) inherited from
+                        // ControllerWithAxes / Controller. Axis 0/1 = left stick, button 2 = Xbox X.
+                        stick = new Vector2(js.GetAxis(0), js.GetAxis(1));
+                        xNow  = js.GetButton(2);
+                        read  = true;
+                    }
                 }
             }
             catch { }
