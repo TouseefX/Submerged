@@ -40,8 +40,7 @@ namespace Submerged.BaseGame.Patches
             }
 
             // This is a full recode of WireMinigame: the game's native Update is broken, so we
-            // run our own touch/mouse/gamepad logic (with the detach-reconnect cooldown) and
-            // never hand control back to the original Update.
+            // run our own touch/mouse logic and never hand control back to the original Update.
             CustomWireMinigame.EnsureSetup(__instance);
             CustomWireMinigame.UpdateAndroid(__instance);
             __instance.UpdateLights();
@@ -55,24 +54,7 @@ namespace Submerged.BaseGame.Patches
         private static int    selectedWireIndex = -1;
         private static bool   isDragging        = false;
         private static bool   isSetupDone       = false;
-        private static bool   grabbedWasConnected = false;
         private static Camera cachedCamera;
-
-        // Detach cooldown: after detaching from a right node, don't immediately
-        // reconnect to that same node. Prevents the "detach -> snaps back" bug.
-        private const float DetachCooldown       = 0.35f;
-        private static float detachCooldownTimer = 0f;
-        private static sbyte lastDetachedRightNode = -1;
-
-        // ---- Controller (Xbox) support ----
-        // Left stick = move cursor, hold X to grab/move a wire,
-        // release over a right node to connect or over empty space to detach if connected.
-        // The stick is read from the game's NATIVE Controller API (reliable on Android IL2CPP);
-        // raw UnityEngine.Input is only used as a desktop fallback. Button = Joystick Button 2 (X).
-        private const float ControllerSpeed     = 9f;
-        private static Vector2 controllerCursor    = Vector2.zero;
-        private static bool   controllerCursorInit = false;
-        private static bool   controllerEngaged    = false;
 
         // ---- Close-path entry point (used by the Close patches) ----
         public static void Cleanup(Minigame minigame)
@@ -191,25 +173,11 @@ namespace Submerged.BaseGame.Patches
             bool ended = false;
             Vector2 worldPos = default;
 
-            // Detach cooldown ticks down every frame.
-            if (detachCooldownTimer > 0f)
-                detachCooldownTimer -= Time.deltaTime;
-
-            // ---- Controller (Xbox) input ----
-            // Gamepad is routed through Rewired. We read it at the low level
-            // (axis 0/1 = left stick, button 2 = Xbox X) so it works regardless of whether
-            // Rewired feeds Unity's Input. Falls back to raw UnityEngine.Input if Rewired
-            // isn't reachable. (AmongUs.Controller is only the TOUCH handler â€” no gamepad API,
-            // and the game's native Update is intentionally replaced, so we self-contain it.)
-            Vector2 stick = ReadGamepadStick(out bool xDown, out bool xUp);
-            bool ctrlActivity = stick.sqrMagnitude > 1e-4f || xDown || xUp;
-
             bool touchActive = Input.touchCount > 0;
             bool mouseActive = Input.GetMouseButton(0) || Input.GetMouseButtonDown(0);
 
             if (touchActive)
             {
-                controllerEngaged = false;
                 Touch touch = Input.GetTouch(0);
                 began = touch.phase == TouchPhase.Began;
                 ended = touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled;
@@ -218,37 +186,10 @@ namespace Submerged.BaseGame.Patches
             }
             else if (mouseActive)
             {
-                controllerEngaged = false;
                 began = Input.GetMouseButtonDown(0);
                 ended = Input.GetMouseButtonUp(0);
                 if (began || isDragging)
                     worldPos = cam.ScreenToWorldPoint(Input.mousePosition);
-            }
-            else if (ctrlActivity || controllerEngaged)
-            {
-                controllerEngaged = true;
-
-                if (!controllerCursorInit && leftNodes.Length > 0 && leftNodes[0] != null)
-                {
-                    controllerCursor     = leftNodes[0].transform.position;
-                    controllerCursorInit = true;
-                }
-
-                // Free cursor driven by the left stick.
-                controllerCursor += new Vector2(stick.x, stick.y) * ControllerSpeed * Time.deltaTime;
-                worldPos = controllerCursor;
-
-                began = xDown; // grab on X press
-                ended  = xUp;  // drop on X release
-
-                // Highlight the wire currently under the cursor (when not dragging).
-                if (!isDragging)
-                {
-                    int hover = GetLeftWireAt(leftNodes, worldPos);
-                    selectedWireIndex = hover;
-                    if (hover >= 0 && instance.selectedWireUI != null && leftNodes[hover] != null)
-                        instance.selectedWireUI.position = leftNodes[hover].transform.position;
-                }
             }
             else
             {
@@ -256,7 +197,12 @@ namespace Submerged.BaseGame.Patches
                 ended = false;
             }
 
-            // ---- Began: try to pick up a left wire ----
+            // ---- Began: pick up a left wire ----
+            // If that wire is already connected, lift it off immediately (clear the connection
+            // and reset its line). This is what makes unattach + reconnect reliable: a wrong
+            // wire is picked up the instant you grab it, so it can never snap back on its own.
+            // Then you drop it on another right node to reconnect, or on empty space to leave
+            // it detached.
             if (began)
             {
                 selectedWireIndex = -1;
@@ -269,8 +215,15 @@ namespace Submerged.BaseGame.Patches
                     {
                         selectedWireIndex = i;
                         isDragging        = true;
-                        // Remember if this wire was already connected, so we can detach it later.
-                        grabbedWasConnected = (i < instance.ActualWires.Length) && instance.ActualWires[i] >= 0;
+
+                        // Lift off an already-connected wire right away.
+                        if (i < instance.ActualWires.Length && instance.ActualWires[i] >= 0)
+                        {
+                            instance.ActualWires[i] = -1;
+                            wire.ResetLine(wire.BaseWorldPos, true);
+                            if (wire.Liner != null)
+                                wire.Liner.color = Color.white;
+                        }
 
                         if (instance.selectedWireUI != null)
                             instance.selectedWireUI.position = wire.transform.position;
@@ -280,59 +233,33 @@ namespace Submerged.BaseGame.Patches
                 }
             }
 
-            // ---- While dragging: stretch line; connect on hover or release ----
+            // ---- Dragging: stretch the line to the cursor ----
             if (isDragging && selectedWireIndex >= 0 && selectedWireIndex < leftNodes.Length)
             {
                 Wire wire = leftNodes[selectedWireIndex];
                 if (wire != null)
                     wire.ResetLine(worldPos, false);
 
-                WireNode rightNode = GetRightNodeAt(rightNodes, worldPos);
-
-                // Don't reconnect to the node we just detached from until the cooldown elapses.
-                bool blocked = detachCooldownTimer > 0f && rightNode != null && rightNode.WireId == lastDetachedRightNode;
-
-                if (rightNode != null && wire != null && !blocked)
+                // ---- Release: connect on drop over a right node, otherwise leave detached ----
+                if (ended)
                 {
-                    wire.ConnectRight(rightNode);
-
-                    if (selectedWireIndex < instance.ActualWires.Length)
-                        instance.ActualWires[selectedWireIndex] = rightNode.WireId;
-
-                    if (instance.WireSounds != null && instance.WireSounds.Length > 0)
+                    WireNode rightNode = GetRightNodeAt(rightNodes, worldPos);
+                    if (rightNode != null && wire != null)
                     {
-                        int idx = UnityEngine.Random.Range(0, instance.WireSounds.Length);
-                        SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
-                    }
+                        wire.ConnectRight(rightNode);
 
-                    selectedWireIndex = -1;
-                    isDragging        = false;
+                        if (selectedWireIndex < instance.ActualWires.Length)
+                            instance.ActualWires[selectedWireIndex] = rightNode.WireId;
 
-                    TryCompleteTask(instance);
-                }
-                else if (ended)
-                {
-                    // Released on empty space. If this wire was already connected,
-                    // detach it so a wrong connection can be undone. Otherwise just
-                    // cancel the drag (no connection was ever made).
-                    if (grabbedWasConnected && selectedWireIndex < instance.ActualWires.Length)
-                    {
-                        // Capture the node we're leaving BEFORE clearing the wire.
-                        lastDetachedRightNode = instance.ActualWires[selectedWireIndex];
-                        instance.ActualWires[selectedWireIndex] = -1;
-                        detachCooldownTimer = DetachCooldown;
-
-                        if (wire != null)
+                        if (instance.WireSounds != null && instance.WireSounds.Length > 0)
                         {
-                            wire.ResetLine(wire.BaseWorldPos, true);
-                            if (wire.Liner != null)
-                                wire.Liner.color = Color.white;
+                            int idx = UnityEngine.Random.Range(0, instance.WireSounds.Length);
+                            SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
                         }
+
+                        TryCompleteTask(instance);
                     }
-                    else if (wire != null)
-                    {
-                        wire.ResetLine(wire.BaseWorldPos, true);
-                    }
+                    // Released on empty space -> the wire stays detached (already reset on grab).
 
                     selectedWireIndex = -1;
                     isDragging        = false;
@@ -352,20 +279,6 @@ namespace Submerged.BaseGame.Patches
                     return node;
             }
             return null;
-        }
-
-        private static int GetLeftWireAt(Wire[] nodes, Vector2 pos)
-        {
-            if (nodes == null)
-                return -1;
-
-            for (int i = 0; i < nodes.Length; i++)
-            {
-                Wire node = nodes[i];
-                if (node?.hitbox != null && node.hitbox.OverlapPoint(pos))
-                    return i;
-            }
-            return -1;
         }
 
         /// <summary>
@@ -404,13 +317,7 @@ namespace Submerged.BaseGame.Patches
             selectedWireIndex = -1;
             isDragging        = false;
             isSetupDone       = false;
-            grabbedWasConnected = false;
             cachedCamera     = null; // force a fresh Camera.main lookup on next open
-            detachCooldownTimer  = 0f;
-            lastDetachedRightNode = -1;
-            controllerCursor    = Vector2.zero;
-            controllerCursorInit = false;
-            controllerEngaged   = false;
         }
 
         private static Camera GetCamera()
@@ -418,69 +325,6 @@ namespace Submerged.BaseGame.Patches
             if (cachedCamera == null)
                 cachedCamera = Camera.main;
             return cachedCamera;
-        }
-
-        // Read the gamepad through Rewired's low-level API (no reliance on action names,
-        // which are stripped from the IL2CPP dump). Axis 0/1 = left stick, button 2 = Xbox X.
-        // Falls back to raw UnityEngine.Input if Rewired isn't reachable. Edge-detects the
-        // X button so began/ended (grab/drop) fire once per press.
-        private static bool prevXButton = false;
-        private static Vector2 ReadGamepadStick(out bool xDown, out bool xUp)
-        {
-            xDown = false;
-            xUp   = false;
-            Vector2 stick = Vector2.zero;
-            bool xNow = false;
-            bool read  = false;
-
-            try
-            {
-                // Among Us maps the local human to a single Rewired player. Resolve it from the
-                // local PlayerControl's PlayerId (the Rewired player id) and fall back to player 0
-                // if the local player isn't available yet (e.g. before spawn / on a non-host client).
-                var rwPlayer = Rewired.ReInput.players.GetPlayer(
-                    PlayerControl.LocalPlayer != null ? (int)PlayerControl.LocalPlayer.PlayerId : 0);
-
-                if (rwPlayer == null)
-                    rwPlayer = Rewired.ReInput.players.GetPlayer(0);
-
-                // IList<Joystick> has no Count in IL2CPP-interop, so use joystickCount + index.
-                // If the local player's pad isn't found, scan every player for one with a joystick.
-                if (rwPlayer != null && rwPlayer.controllers.joystickCount <= 0)
-                {
-                    int pc = Rewired.ReInput.players.playerCount;
-                    for (int p = 0; p < pc; p++)
-                    {
-                        var cand = Rewired.ReInput.players.GetPlayer(p);
-                        if (cand != null && cand.controllers.joystickCount > 0) { rwPlayer = cand; break; }
-                    }
-                }
-
-                if (rwPlayer != null && rwPlayer.controllers.joystickCount > 0)
-                {
-                    var js = rwPlayer.controllers.Joysticks[0];
-                    if (js != null)
-                    {
-                        // Joystick exposes GetAxis(int) / GetButton(int) inherited from
-                        // ControllerWithAxes / Controller. Axis 0/1 = left stick, button 2 = Xbox X.
-                        stick = new Vector2(js.GetAxis(0), js.GetAxis(1));
-                        xNow  = js.GetButton(2);
-                        read  = true;
-                    }
-                }
-            }
-            catch { }
-
-            if (!read)
-            {
-                stick = new Vector2(Input.GetAxis("Horizontal"), Input.GetAxis("Vertical"));
-                xNow = Input.GetKey(KeyCode.JoystickButton2) || Input.GetKey(KeyCode.Joystick1Button2);
-            }
-
-            xDown = xNow && !prevXButton;
-            xUp   = !xNow && prevXButton;
-            prevXButton = xNow;
-            return stick;
         }
     }
     #endif
