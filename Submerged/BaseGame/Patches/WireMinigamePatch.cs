@@ -12,13 +12,13 @@ namespace Submerged.BaseGame.Patches
     [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { })]
     public static class WireMinigameClosePatch
     {
-        public static void Prefix(Minigame instance) => CustomWireMinigame.Cleanup(instance);
+        public static void Prefix(Minigame __instance) => CustomWireMinigame.Cleanup(__instance);
     }
 
     [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { typeof(bool) })]
     public static class WireMinigameCloseBoolPatch
     {
-        public static void Prefix(Minigame instance) => CustomWireMinigame.Cleanup(instance);
+        public static void Prefix(Minigame __instance) => CustomWireMinigame.Cleanup(__instance);
     }
 
     // ================== UPDATE PATCH ==================
@@ -26,22 +26,22 @@ namespace Submerged.BaseGame.Patches
     public static class WireMinigameUpdatePatch
     {
         [HarmonyPrefix]
-        public static bool Prefix(WireMinigame instance)
+        public static bool Prefix(WireMinigame __instance)
         {
             // Not in submerged mode -> let the original (broken on Android) Update run.
             if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged()))
                 return true;
 
             // Minigame is closing / inactive -> tear down our state and skip the original.
-            if (!instance.isActiveAndEnabled || instance.amClosing != Minigame.CloseState.None)
+            if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
             {
-                CustomWireMinigame.Cleanup(instance);
+                CustomWireMinigame.Cleanup(__instance);
                 return false;
             }
 
-            CustomWireMinigame.EnsureSetup(instance);
-            CustomWireMinigame.UpdateAndroid(instance);
-            instance.UpdateLights();
+            CustomWireMinigame.EnsureSetup(__instance);
+            CustomWireMinigame.UpdateAndroid(__instance);
+            __instance.UpdateLights();
 
             return false;
         }
