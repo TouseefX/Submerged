@@ -197,17 +197,13 @@ namespace Submerged.BaseGame.Patches
                 ended = false;
             }
 
-            // ---- Began: pick up a left wire ----
-            // If that wire is already connected, lift it off immediately (clear the connection
-            // and reset its line). This is what makes unattach + reconnect reliable: a wrong
-            // wire is picked up the instant you grab it, so it can never snap back on its own.
-            // Then you drop it on another right node to reconnect, or on empty space to leave
-            // it detached.
+            // ---- Began: grab a left (start) wire, or tap a connected right wire to unattach ----
             if (began)
             {
                 selectedWireIndex = -1;
                 isDragging        = false;
 
+                // 1) Grab a left wire -> lift it off (reset to start) and start dragging.
                 for (int i = 0; i < leftNodes.Length; i++)
                 {
                     Wire wire = leftNodes[i];
@@ -231,23 +227,47 @@ namespace Submerged.BaseGame.Patches
                         break;
                     }
                 }
+
+                // 2) Not grabbing a left wire: a tap on a CONNECTED right wire unattaches it
+                //    (resets that wire back to its start position) — unattach method #1.
+                if (!isDragging && instance.ActualWires != null)
+                {
+                    WireNode rNode = GetRightNodeAt(rightNodes, worldPos);
+                    if (rNode != null)
+                    {
+                        for (int i = 0; i < instance.ActualWires.Length; i++)
+                        {
+                            if (instance.ActualWires[i] == rNode.WireId)
+                            {
+                                instance.ActualWires[i] = -1;
+                                Wire w = (i < leftNodes.Length) ? leftNodes[i] : null;
+                                if (w != null)
+                                {
+                                    w.ResetLine(w.BaseWorldPos, true);
+                                    if (w.Liner != null)
+                                        w.Liner.color = Color.white;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
             }
 
-            // ---- Dragging: stretch the line to the cursor ----
+            // ---- Dragging: auto-connect when near a right wire, follow the cursor otherwise ----
             if (isDragging && selectedWireIndex >= 0 && selectedWireIndex < leftNodes.Length)
             {
-                Wire wire = leftNodes[selectedWireIndex];
-                if (wire != null)
-                    wire.ResetLine(worldPos, false);
+                Wire     wire      = leftNodes[selectedWireIndex];
+                WireNode rightNode = GetRightNodeAt(rightNodes, worldPos);
 
-                // ---- Release: connect on drop over a right node, otherwise leave detached ----
-                if (ended)
+                if (rightNode != null && wire != null)
                 {
-                    WireNode rightNode = GetRightNodeAt(rightNodes, worldPos);
-                    if (rightNode != null && wire != null)
+                    // Near a right wire -> auto-connect (snap). Only fire sound/complete when
+                    // the connection actually changes, so holding still over the node is silent.
+                    if (selectedWireIndex >= instance.ActualWires.Length ||
+                        instance.ActualWires[selectedWireIndex] != rightNode.WireId)
                     {
                         wire.ConnectRight(rightNode);
-
                         if (selectedWireIndex < instance.ActualWires.Length)
                             instance.ActualWires[selectedWireIndex] = rightNode.WireId;
 
@@ -259,8 +279,27 @@ namespace Submerged.BaseGame.Patches
 
                         TryCompleteTask(instance);
                     }
-                    // Released on empty space -> the wire stays detached (already reset on grab).
+                }
+                else
+                {
+                    // Free drag -> the line follows the cursor and the wire isn't connected.
+                    if (wire != null)
+                        wire.ResetLine(worldPos, false);
+                    if (selectedWireIndex < instance.ActualWires.Length &&
+                        instance.ActualWires[selectedWireIndex] != -1)
+                        instance.ActualWires[selectedWireIndex] = -1;
+                }
 
+                // Release: if over a node it's already connected (snapped above); if in empty
+                // space the wire resets back to its start position (unattach method #2 tail).
+                if (ended)
+                {
+                    if (rightNode == null && wire != null)
+                    {
+                        wire.ResetLine(wire.BaseWorldPos, true);
+                        if (wire.Liner != null)
+                            wire.Liner.color = Color.white;
+                    }
                     selectedWireIndex = -1;
                     isDragging        = false;
                 }
