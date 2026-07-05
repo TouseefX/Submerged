@@ -52,7 +52,16 @@ namespace Submerged.BaseGame.Patches
         private static int    selectedWireIndex = -1;
         private static bool   isDragging        = false;
         private static bool   isSetupDone       = false;
+        private static bool   grabbedWasConnected = false;
         private static Camera cachedCamera;
+
+        // ---- Controller (Xbox) support ----
+        // LS = move cursor, hold X (Joystick Button 2) to grab/move a wire,
+        // release over a right node to connect or over empty space to detach if connected.
+        private const float ControllerSpeed     = 9f;
+        private static Vector2 controllerCursor    = Vector2.zero;
+        private static bool   controllerCursorInit = false;
+        private static bool   controllerEngaged    = false;
 
         // ---- Close-path entry point (used by the Close patches) ----
         public static void Cleanup(Minigame minigame)
@@ -174,20 +183,66 @@ namespace Submerged.BaseGame.Patches
             // Read began/ended as one-shot events but do NOT overwrite the isDragging state
             // from Input.GetMouseButton (it returns false on the release frame, which previously
             // made the dragging block skip and let wires phase through).
-            if (Input.touchCount > 0)
+
+            // Controller (Xbox) buttons: X = Joystick Button 2 (also try Joystick1Button2).
+            bool xHeld = Input.GetKey(KeyCode.JoystickButton2) || Input.GetKey(KeyCode.Joystick1Button2);
+            bool xDown = Input.GetKeyDown(KeyCode.JoystickButton2) || Input.GetKeyDown(KeyCode.Joystick1Button2);
+            bool xUp   = Input.GetKeyUp(KeyCode.JoystickButton2)   || Input.GetKeyUp(KeyCode.Joystick1Button2);
+            float lsX = Input.GetAxis("Horizontal");
+            float lsY = Input.GetAxis("Vertical");
+            bool lsActive = Mathf.Abs(lsX) > 0.15f || Mathf.Abs(lsY) > 0.15f;
+            bool controllerInput = xHeld || xDown || lsActive;
+
+            bool touchActive = Input.touchCount > 0;
+            bool mouseActive = Input.GetMouseButton(0) || Input.GetMouseButtonDown(0);
+
+            if (touchActive)
             {
+                controllerEngaged = false;
                 Touch touch = Input.GetTouch(0);
                 began = touch.phase == TouchPhase.Began;
                 ended = touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled;
                 if (began || isDragging)
                     worldPos = cam.ScreenToWorldPoint(touch.position);
             }
-            else
+            else if (mouseActive)
             {
+                controllerEngaged = false;
                 began = Input.GetMouseButtonDown(0);
                 ended = Input.GetMouseButtonUp(0);
                 if (began || isDragging)
                     worldPos = cam.ScreenToWorldPoint(Input.mousePosition);
+            }
+            else if (controllerInput || controllerEngaged)
+            {
+                controllerEngaged = true;
+
+                if (!controllerCursorInit && leftNodes.Length > 0 && leftNodes[0] != null)
+                {
+                    controllerCursor     = leftNodes[0].transform.position;
+                    controllerCursorInit = true;
+                }
+
+                // Free cursor driven by the left stick.
+                controllerCursor += new Vector2(lsX, lsY) * ControllerSpeed * Time.deltaTime;
+                worldPos = controllerCursor;
+
+                began = xDown; // grab on X press
+                ended  = xUp;   // drop on X release
+
+                // Highlight the wire currently under the cursor (when not dragging).
+                if (!isDragging)
+                {
+                    int hover = GetLeftWireAt(leftNodes, worldPos);
+                    selectedWireIndex = hover;
+                    if (hover >= 0 && instance.selectedWireUI != null && leftNodes[hover] != null)
+                        instance.selectedWireUI.position = leftNodes[hover].transform.position;
+                }
+            }
+            else
+            {
+                began = false;
+                ended = false;
             }
 
             // ---- Began: try to pick up a left wire ----
@@ -203,6 +258,8 @@ namespace Submerged.BaseGame.Patches
                     {
                         selectedWireIndex = i;
                         isDragging        = true;
+                        // Remember if this wire was already connected, so we can detach it later.
+                        grabbedWasConnected = (i < instance.ActualWires.Length) && instance.ActualWires[i] >= 0;
 
                         if (instance.selectedWireUI != null)
                             instance.selectedWireUI.position = wire.transform.position;
@@ -241,8 +298,23 @@ namespace Submerged.BaseGame.Patches
                 }
                 else if (ended)
                 {
-                    if (wire != null)
+                    // Released on empty space. If this wire was already connected,
+                    // detach it so a wrong connection can be undone. Otherwise just
+                    // cancel the drag (no connection was ever made).
+                    if (grabbedWasConnected && selectedWireIndex < instance.ActualWires.Length)
+                    {
+                        instance.ActualWires[selectedWireIndex] = -1;
+                        if (wire != null)
+                        {
+                            wire.ResetLine(wire.BaseWorldPos, true);
+                            if (wire.Liner != null)
+                                wire.Liner.color = Color.white;
+                        }
+                    }
+                    else if (wire != null)
+                    {
                         wire.ResetLine(wire.BaseWorldPos, true);
+                    }
 
                     selectedWireIndex = -1;
                     isDragging        = false;
@@ -262,6 +334,20 @@ namespace Submerged.BaseGame.Patches
                     return node;
             }
             return null;
+        }
+
+        private static int GetLeftWireAt(Wire[] nodes, Vector2 pos)
+        {
+            if (nodes == null)
+                return -1;
+
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                Wire node = nodes[i];
+                if (node?.hitbox != null && node.hitbox.OverlapPoint(pos))
+                    return i;
+            }
+            return -1;
         }
 
         /// <summary>
@@ -300,7 +386,11 @@ namespace Submerged.BaseGame.Patches
             selectedWireIndex = -1;
             isDragging        = false;
             isSetupDone       = false;
+            grabbedWasConnected = false;
             cachedCamera     = null; // force a fresh Camera.main lookup on next open
+            controllerCursor    = Vector2.zero;
+            controllerCursorInit = false;
+            controllerEngaged   = false;
         }
 
         private static Camera GetCamera()
