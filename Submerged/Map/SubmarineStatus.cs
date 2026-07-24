@@ -401,6 +401,23 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
     {
         foreach (PassiveButton passiveButton in minigame.GetComponentsInChildren<PassiveButton>(true))
         {
+            if (passiveButton == null || passiveButton.OnClick == null) continue;
+
+#if ANDROID
+            // Android Unity Event systems struggle with direct serialized call modification.
+            // Explicitly clear listener targets causing the obsolete Close(bool) crash.
+            for (int i = 0; i < passiveButton.OnClick.GetPersistentEventCount(); i++)
+            {
+                string targetMethod = passiveButton.OnClick.GetPersistentMethodName(i);
+                if (targetMethod == "Close" || targetMethod == nameof(Minigame.Close))
+                {
+                    // Force the button to cleanly call the parameterless Close version instead of crashing
+                    UnityEngine.Events.UnityAction voidCloseAction = new System.Action(minigame.Close);
+                    passiveButton.OnClick.RemoveListener(voidCloseAction);
+                    passiveButton.OnClick.AddListener(voidCloseAction);
+                }
+            }
+#else
             foreach (PersistentCall call in passiveButton.OnClick.m_PersistentCalls.m_Calls)
             {
                 if (call.methodName == nameof(Minigame.Close) && call.mode == PersistentListenerMode.Bool && call.target.TryCast<Minigame>())
@@ -408,6 +425,7 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
                     call.mode = PersistentListenerMode.Void;
                 }
             }
+#endif
         }
     }
 
