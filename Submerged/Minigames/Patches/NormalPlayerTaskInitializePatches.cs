@@ -1,6 +1,8 @@
-﻿using System;
+using System;
 using HarmonyLib;
+using JetBrains.Annotations;
 using Submerged.Enums;
+using UnityEngine;
 
 namespace Submerged.Minigames.Patches;
 
@@ -11,6 +13,8 @@ public static class NormalPlayerTaskInitializePatches
     [UsedImplicitly]
     public static bool Prefix(NormalPlayerTask __instance)
     {
+        if (__instance == null || __instance.gameObject == null) return true;
+        
         __instance.Arrow = __instance.gameObject.GetComponentInChildren<ArrowBehaviour>(true);
 
         return true;
@@ -20,9 +24,17 @@ public static class NormalPlayerTaskInitializePatches
     [UsedImplicitly]
     public static void Postfix(NormalPlayerTask __instance)
     {
-        if (__instance.TaskType == CustomTaskTypes.OxygenateSeaPlants)
+        if (__instance == null) return;
+        
+        if ((int)__instance.TaskType == (int)CustomTaskTypes.OxygenateSeaPlants)
         {
+#if ANDROID
+            // Use native standard Random engine for cross-platform IL2CPP binary performance
+            int randomSeed = new System.Random().Next(0, int.MaxValue);
+            __instance.Data = BitConverter.GetBytes(randomSeed);
+#else 
             __instance.Data = BitConverter.GetBytes(UnityRandom.RandomRangeInt(0, int.MaxValue));
+#endif
         }
     }
 }
