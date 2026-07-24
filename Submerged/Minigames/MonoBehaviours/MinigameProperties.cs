@@ -7,10 +7,15 @@ using UnityEngine;
 namespace Submerged.Minigames.MonoBehaviours;
 
 [RegisterInIl2Cpp]
+#if ANDROID
 public sealed class MinigameProperties : MonoBehaviour
 {
-    // Native IL2CPP constructor pointer requirement
+    // Native IL2CPP constructor explicitly written out for Android stability
     public MinigameProperties(IntPtr ptr) : base(ptr) { }
+#else
+public sealed class MinigameProperties(nint ptr) : MonoBehaviour(ptr)
+{
+#endif
 
     // --- Serialized / Assigned Fields ---
     public string @string;
@@ -23,6 +28,7 @@ public sealed class MinigameProperties : MonoBehaviour
 
     public string playerTaskName = "";
     public string minigameName = "";
+
     public bool dontCloseOnBgClick;
 
     public void Awake()
@@ -34,13 +40,11 @@ public sealed class MinigameProperties : MonoBehaviour
             return;
         }
 
-        // Safely grab the vanilla component data containers
         StowArms stowArms = propObj.GetComponent<StowArms>();
         PolishRubyGame polishRubyGame = propObj.GetComponent<PolishRubyGame>();
         TextLink textLink = propObj.GetComponent<TextLink>();
         Tilemap2 tilemap2 = propObj.GetComponent<Tilemap2>();
 
-        // Reconstruct data mappings
         if (textLink != null) @string = textLink.targetUrl;
         if (polishRubyGame != null) audioClips = polishRubyGame.rubSounds;
         if (stowArms != null) colliders = stowArms.GunColliders;
@@ -49,10 +53,14 @@ public sealed class MinigameProperties : MonoBehaviour
         if (tilemap2 != null) sprites = tilemap2.sprites;
         if (polishRubyGame != null) vector2S = polishRubyGame.directions;
 
-        // Parse strings out of the hidden TextLink targetUrl
         if (!string.IsNullOrEmpty(@string))
         {
+#if ANDROID
+            // Explicit char array initialization to prevent parsing errors on older mobile runtimes
             string[] splits = @string.Split(new char[] { ';' }, 2);
+#else
+            string[] splits = @string.Split([';'], 2);
+#endif
             if (splits.Length > 0) playerTaskName = splits[0];
             if (splits.Length > 1) minigameName = splits[1];
         }
@@ -65,13 +73,19 @@ public sealed class MinigameProperties : MonoBehaviour
         Minigame[] minigames = GetComponents<Minigame>();
         if (minigames == null || minigames.Length == 0) return;
 
-        // Find the minigame handler that isn't a DivertPowerMetagame container
+#if ANDROID
+        // Strict null and validation checks for Android garbage collection threads
         var activeMinigame = minigames.FirstOrDefault(mg => mg != null && !mg.TryCast<DivertPowerMetagame>());
-        
         if (activeMinigame != null)
             activeMinigame.Close();
         else if (minigames[0] != null)
             minigames[0].Close();
+#else
+        if (minigames.FirstOrDefault(mg => !mg.TryCast<DivertPowerMetagame>()) is { } m)
+            m.Close();
+        else
+            minigames[0].Close();
+#endif
     }
 
     [HideFromIl2Cpp]
@@ -86,7 +100,11 @@ public sealed class MinigameProperties : MonoBehaviour
         string p = "";
         string m = "";
 
+#if ANDROID
         string[] splits = textLink.targetUrl.Split(new char[] { ';' }, 2);
+#else
+        string[] splits = textLink.targetUrl.Split([';'], 2);
+#endif
         if (splits.Length > 0) p = splits[0];
         if (splits.Length > 1) m = splits[1];
 
