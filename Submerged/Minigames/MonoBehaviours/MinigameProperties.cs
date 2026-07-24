@@ -30,16 +30,18 @@ public sealed class MinigameProperties(nint ptr) : MonoBehaviour(ptr)
     public string minigameName = "";
 
     public bool dontCloseOnBgClick;
-
+    
     public void Awake()
     {
         Transform propObj = transform.Find("MinigameProperties");
         if (propObj == null)
         {
-            Debug.LogError("[Submerged] MinigameProperties child object not found!");
+            // Explicitly use UnityEngine namespace to avoid BepInEx Logger conflicts
+            UnityEngine.Debug.LogError("[Submerged] MinigameProperties child object not found!");
             return;
         }
 
+        // Safely extract the hidden components used for data mapping
         StowArms stowArms = propObj.GetComponent<StowArms>();
         PolishRubyGame polishRubyGame = propObj.GetComponent<PolishRubyGame>();
         TextLink textLink = propObj.GetComponent<TextLink>();
@@ -56,7 +58,7 @@ public sealed class MinigameProperties(nint ptr) : MonoBehaviour(ptr)
         if (!string.IsNullOrEmpty(@string))
         {
 #if ANDROID
-            // Explicit char array initialization to prevent parsing errors on older mobile runtimes
+            // Safe char array parsing for older Android mobile build pipelines
             string[] splits = @string.Split(new char[] { ';' }, 2);
 #else
             string[] splits = @string.Split([';'], 2);
