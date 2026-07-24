@@ -471,7 +471,10 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
             StowArms propertiesObj = minigame.GetComponentInChildren<StowArms>(true);
             if (!propertiesObj || minigame.GetComponentInChildren<MinigameProperties>()) continue;
 
-            (string playerTaskName, string minigameName) = minigame.gameObject.AddComponent<MinigameProperties>().GetCustomTypes();
+            // Explicitly unpack our custom types to avoid tuple layout issues on mobile
+            var customTypes = minigame.gameObject.AddComponent<MinigameProperties>().GetCustomTypes();
+            string playerTaskName = customTypes.playerTaskName;
+            string minigameName = customTypes.minigameName;
 
             if (!string.IsNullOrWhiteSpace(playerTaskName))
             {
@@ -493,9 +496,8 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
                 }
                 catch (Exception e)
                 {
-                    Error("Failed to add new minigame");
-                    Error(e.ToString());
-
+                    UnityEngine.Debug.LogError("[Submerged] Failed to add new task injection: " + playerTaskName);
+                    UnityEngine.Debug.LogError(e.ToString());
                     continue;
                 }
             }
@@ -515,8 +517,8 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
                 }
                 catch (Exception e)
                 {
-                    Error("Failed to add new minigame");
-                    Error(e.ToString());
+                    UnityEngine.Debug.LogError("[Submerged] Failed to add new minigame injection: " + minigameName);
+                    UnityEngine.Debug.LogError(e.ToString());
                 }
             }
         }
@@ -532,7 +534,10 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
         foreach ((_, GameObject minigameObject) in consoleMinigames)
         {
             if (minigameObject.GetComponent<MinigameProperties>()) continue;
-            (_, string minigameName) = minigameObject.AddComponent<MinigameProperties>().GetCustomTypes();
+            
+            // Fixed variable decomposition structure for Android stability
+            var customTypes = minigameObject.AddComponent<MinigameProperties>().GetCustomTypes();
+            string minigameName = customTypes.minigameName;
 
             Minigame minigame = minigameObject.GetComponent<Minigame>();
 
@@ -547,8 +552,8 @@ public sealed class SubmarineStatus(nint intPtr) : MonoBehaviour(intPtr)
                 }
                 catch (Exception e)
                 {
-                    Error("Failed to add new minigame");
-                    Error(e.ToString());
+                    UnityEngine.Debug.LogError("[Submerged] Failed console inject: " + minigameName);
+                    UnityEngine.Debug.LogError(e.ToString());
                 }
             }
         }
