@@ -11,6 +11,8 @@ using Submerged.Extensions;
 using TMPro;
 using Hazel;
 
+// Helper to check if we're actually on the sub map.
+// I keep forgetting if ShipStatus is null on startup, so null check is safer.
 public static class MedScanMapChecker
 {
     public static bool IsSubmerged()
@@ -26,9 +28,11 @@ public static class HandleScanSoundRpcPatch
 
     public static bool Prefix(PlayerControl __instance, byte callId, MessageReader reader)
     {
+        // If we aren't on the sub, just let the game handle it normally.
         if (!MedScanMapChecker.IsSubmerged())
             return true;
 
+        // 215 is the ID I assigned for the custom sound RPC.
         if (callId != 215)
             return true;
 
@@ -44,6 +48,7 @@ public static class HandleScanSoundRpcPatch
         if (localPlayer == null)
             return false;
 
+        // Make sure they are on the same floor level, otherwise don't play the sound.
         var scanningHandler = FloorHandler.GetFloorHandler(scanningPlayer);
         var localHandler = FloorHandler.GetFloorHandler(localPlayer);
 
@@ -51,8 +56,8 @@ public static class HandleScanSoundRpcPatch
             scanningHandler.onUpper != localHandler.onUpper)
             return false;
 
-        // FindObjectsOfType is expensive; only do it once and only when we actually
-        // need the sound (callId == 215 already gated above).
+        // FindObjectsOfType is super slow, so caching it here.
+        // Wait, is this the best place to cache? Eh, it works for now.
         if (cachedScanSound == null)
         {
             var minigame = UnityEngine.Object.FindObjectsOfType<MedScanMinigame>(true).FirstOrDefault();
@@ -69,12 +74,13 @@ public static class HandleScanSoundRpcPatch
         if (distance > maxHearingDistance)
             return false;
 
+        // Simple volume falloff. 
         float volumeModifier = 1f - (distance / maxHearingDistance);
         float finalVolume = Mathf.Lerp(0.25f, 0.95f, volumeModifier);
 
         SoundManager.Instance.PlaySound(cachedScanSound, false, finalVolume);
 
-        return false;
+        return false; // We handled it, don't let the base game try to play it.
     }
 }
 
@@ -85,6 +91,7 @@ public static class ShipStatusStartPatch
     [HarmonyPostfix]
     public static void Postfix(ShipStatus __instance)
     {
+        // Just reset everything when the ship starts.
         MedScanMinigamePatch.Reset();
     }
 }
@@ -96,6 +103,8 @@ public static class MedScanClosePatch
     {
         if (!MedScanMapChecker.IsSubmerged()) return;
         if (__instance is not MedScanMinigame medScan) return;
+        
+        // Need to clean up the scanner state if they close the window early.
         MedScanMinigamePatch.ForceCleanup(medScan);
         MedScanMinigamePatch.Reset();
     }
@@ -108,6 +117,7 @@ public static class MedScanCloseBoolPatch
     {
         if (!MedScanMapChecker.IsSubmerged()) return;
         if (__instance is not MedScanMinigame medScan) return;
+        
         MedScanMinigamePatch.ForceCleanup(medScan);
         MedScanMinigamePatch.Reset();
     }
@@ -119,6 +129,7 @@ public static class MedScanMinigamePatch
     private const float WalkSpeed   = 1.5f;
     private const float ArrivalDist = 0.15f;
 
+    // State flags. Probably should have used an enum, but bools are easier to debug quickly.
     public static bool walkDone     = false;
     public static bool taskComplete = false;
     public static bool soundPlaying = false;
@@ -128,7 +139,7 @@ public static class MedScanMinigamePatch
     private static bool      targetSet       = false;
     private static AudioClip cachedScanSound = null;
 
-    // Typing variables
+    // Typing effect variables
     private static float  typeTimer    = 0f;
     private static int    charIndex    = 0;
     private static string fullVitals   = "";
@@ -136,7 +147,7 @@ public static class MedScanMinigamePatch
     private static string cachedBloodType = "";
     private static float  typeInterval = 0.025f;
 
-    // ---- Caches to avoid per-frame IL2CPP lookups ----
+    // Caches to avoid per-frame IL2CPP lookups.
     private static TranslationController cachedTranslator;
     private static TextMeshPro          cachedStatusText;
     private static bool                 statusTextResolved;
@@ -157,6 +168,7 @@ public static class MedScanMinigamePatch
     private static string GetMedScanColorString(int colorId)
     {
         var translator = GetTranslator();
+        // This is tedious but necessary since the game doesn't expose a simple list.
         return colorId switch
         {
             0  => translator.GetString(StringNames.ColorRed),
@@ -185,6 +197,7 @@ public static class MedScanMinigamePatch
     {
         if (vitalsDone) return;
 
+        // Build the string once if it's empty.
         if (string.IsNullOrEmpty(fullVitals))
         {
             var player = PlayerControl.LocalPlayer;
@@ -230,6 +243,7 @@ public static class MedScanMinigamePatch
                     char currentChar = fullVitals[charIndex];
                     charIndex++;
 
+                    // Play a little beep sound for the text effect.
                     if (currentChar != ' ' && currentChar != '\n' && __instance.TextSound != null && SoundManager.Instance != null)
                     {
                         SoundManager.Instance.PlaySound(__instance.TextSound, false, 0.4f);
@@ -261,7 +275,7 @@ public static class MedScanMinigamePatch
         typeInterval    = 0.025f;
         targetPosition  = Vector3.zero;
 
-        // Invalidate cached Unity-object references for the next minigame instance.
+        // Need to clear these so we don't hold onto old objects.
         cachedStatusText   = null;
         statusTextResolved = false;
         cachedVitalsText   = null;
@@ -275,6 +289,7 @@ public static class MedScanMinigamePatch
         var player = PlayerControl.LocalPlayer;
         if (player != null && !taskComplete)
         {
+            // If we close the task, make sure the scanner turns off.
             bool visualTasks = GameOptionsManager.Instance.CurrentGameOptions.GetBool(AmongUs.GameOptions.BoolOptionNames.VisualTasks);
             if (visualTasks) player.RpcSetScanner(false);
             else             player.SetScanner(false, 0);
@@ -288,10 +303,11 @@ public static class MedScanMinigamePatch
     public static bool Prefix(MedScanMinigame __instance)
     {
         if (!MedScanMapChecker.IsSubmerged()) return true;
+        
         if (__instance.ScanSound != null)
             cachedScanSound = __instance.ScanSound;
 
-        // Fresh open detected / closing: tear down state and skip the original.
+        // If the minigame is closing, stop everything.
         if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
         {
             ForceCleanup(__instance);
@@ -306,6 +322,7 @@ public static class MedScanMinigamePatch
         var translator   = GetTranslator();
         bool visualTasks = GameOptionsManager.Instance.CurrentGameOptions.GetBool(AmongUs.GameOptions.BoolOptionNames.VisualTasks);
 
+        // Calculate where to walk to.
         if (!targetSet)
         {
             var console = ShipStatus.Instance.AllConsoles
@@ -318,7 +335,7 @@ public static class MedScanMinigamePatch
             targetSet = true;
         }
 
-        // â”€â”€ Walk phase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // --- Walking logic ---
         if (!walkDone)
         {
             __instance.ScanTimer = __instance.ScanDuration;
@@ -343,7 +360,7 @@ public static class MedScanMinigamePatch
             return false;
         }
 
-        // â”€â”€ Scan phase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // --- Scanning logic ---
         if (__instance.ScanTimer > 0f)
         {
             __instance.ScanTimer -= Time.fixedDeltaTime;
@@ -364,6 +381,7 @@ public static class MedScanMinigamePatch
 
             if (!soundPlaying && __instance.ScanSound != null)
             {
+                // Send the RPC so others can hear it too.
                 if (visualTasks)
                 {
                     var writer = AmongUsClient.Instance.StartRpcImmediately(player.NetId, 215, SendOption.Reliable, -1);
@@ -378,7 +396,7 @@ public static class MedScanMinigamePatch
             return false;
         }
 
-        // â”€â”€ Completion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // --- Task Done ---
         taskComplete = true;
         UpdateStatusText(__instance, translator.GetString(StringNames.MedscanCompleted));
 
@@ -388,6 +406,7 @@ public static class MedScanMinigamePatch
         SubmarineSpawnInSystem.Instance.currentState = SpawnInState.Done;
         SubmarineSpawnInSystem.Instance.IsDirty      = true;
 
+        // Finish the task
         if (__instance.MyNormTask != null) __instance.MyNormTask.NextStep();
         else if (__instance.MyTask != null) __instance.MyTask.Complete();
 
@@ -397,7 +416,7 @@ public static class MedScanMinigamePatch
 
     private static void UpdateProgressBar(MedScanMinigame __instance, float progress)
     {
-        // Avoid redundant gauge writes (the setter rebuilds the gauge each call).
+        // Don't update if it hasn't changed much, might save a few cycles.
         if (Mathf.Abs(progress - lastProgress) < 0.001f)
             return;
         lastProgress = progress;
@@ -411,6 +430,7 @@ public static class MedScanMinigamePatch
         if (statusTextResolved) return cachedStatusText;
         statusTextResolved = true;
 
+        // Try to find the text object by name.
         Transform statusTransform = instance.transform.Find("Parent/StatusText")
                                  ?? instance.transform.Find("StatusText");
 
@@ -420,7 +440,7 @@ public static class MedScanMinigamePatch
             if (cachedStatusText != null) return cachedStatusText;
         }
 
-        // Fallback: scan children once for a "status" (non-"vitals") TextMeshPro.
+        // If that failed, just look through all of them.
         var allText = instance.GetComponentsInChildren<TextMeshPro>(true);
         if (allText != null)
         {
@@ -439,7 +459,6 @@ public static class MedScanMinigamePatch
 
     private static void UpdateStatusText(MedScanMinigame __instance, string text)
     {
-        // Skip redundant writes: assigning TMP.text forces a full mesh rebuild.
         if (text == lastStatusText) return;
 
         TextMeshPro tm = GetStatusText(__instance);
