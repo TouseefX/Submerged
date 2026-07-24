@@ -6,57 +6,55 @@ using System;
 namespace Submerged.BaseGame.Patches
 {
     #if ANDROID
-    // ================== CLOSE PATCHES ==================
-    // Both Close overloads share the same logic via CustomWireMinigame.Cleanup,
-    // so the bodies aren't duplicated.
+    
+    // Patching the Close method. 
+    // Both overloads basically do the same thing, so I'm just pointing them both to the same cleanup method.
     [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { })]
-    public static class WireMinigameClosePatch
+    public static class WireClosePatch
     {
-        public static void Prefix(Minigame __instance) => CustomWireMinigame.Cleanup(__instance);
+        public static void Prefix(Minigame __instance) => WirePatchHelper.Cleanup(__instance);
     }
 
     [HarmonyPatch(typeof(Minigame), nameof(Minigame.Close), new Type[] { typeof(bool) })]
-    public static class WireMinigameCloseBoolPatch
+    public static class WireCloseBoolPatch
     {
-        public static void Prefix(Minigame __instance) => CustomWireMinigame.Cleanup(__instance);
+        public static void Prefix(Minigame __instance) => WirePatchHelper.Cleanup(__instance);
     }
 
-    // ================== UPDATE PATCH ==================
     [HarmonyPatch(typeof(WireMinigame), nameof(WireMinigame.Update))]
-    public static class WireMinigameUpdatePatch
+    public static class WireUpdatePatch
     {
         [HarmonyPrefix]
         public static bool Prefix(WireMinigame __instance)
         {
-            // Not in submerged mode -> let the original (broken on Android) Update run.
+            // If we aren't submerged, just let the game handle it. 
+            // Only need this patch for the specific Android submerged mode.
             if (!(ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged()))
                 return true;
 
-            // Minigame is closing / inactive -> tear down our state and skip the original.
+            // If the game is closing, clean up our mess.
             if (!__instance.isActiveAndEnabled || __instance.amClosing != Minigame.CloseState.None)
             {
-                CustomWireMinigame.Cleanup(__instance);
+                WirePatchHelper.Cleanup(__instance);
                 return false;
             }
 
-            // This is a full recode of WireMinigame: the game's native Update is broken, so we
-            // run our own touch/mouse logic and never hand control back to the original Update.
-            CustomWireMinigame.EnsureSetup(__instance);
-            CustomWireMinigame.UpdateAndroid(__instance);
+            // The original Update is totally broken on Android, so I'm overriding it entirely.
+            WirePatchHelper.EnsureSetup(__instance);
+            WirePatchHelper.UpdateAndroid(__instance);
             __instance.UpdateLights();
 
             return false;
         }
     }
 
-    public static class CustomWireMinigame
+    public static class WirePatchHelper
     {
-        private static int    selectedWireIndex = -1;
-        private static bool   isDragging        = false;
-        private static bool   isSetupDone       = false;
-        private static Camera cachedCamera;
+        private static int selectedIdx = -1;
+        private static bool isDragging = false;
+        private static bool setupDone = false;
+        private static Camera cam; // Cached so we don't call Camera.main every frame
 
-        // ---- Close-path entry point (used by the Close patches) ----
         public static void Cleanup(Minigame minigame)
         {
             if (ShipStatus.Instance != null && ShipStatus.Instance.IsSubmerged() && minigame is WireMinigame wire)
@@ -65,160 +63,135 @@ namespace Submerged.BaseGame.Patches
             Reset();
         }
 
-        // ================== SETUP ==================
         public static void EnsureSetup(WireMinigame instance)
         {
-            if (isSetupDone)
-                return;
+            if (setupDone) return;
 
-            // Begin(task) is the game's own method; guarding the task with null checks
-            // avoids the expensive IL2CPP try/catch that was here before.
+            // Note: I remember that calling Begin() with a null task can cause issues, 
+            // so we check for the task first.
             var task = instance.MyTask ?? (instance.MyNormTask as PlayerTask);
-            if (task != null)
-                instance.Begin(task);
+            if (task != null) instance.Begin(task);
 
-            // Nodes may not be initialised yet this frame -> retry next frame.
-            if (instance.LeftNodes == null || instance.RightNodes == null)
-                return;
+            // Sometimes the nodes aren't ready yet, so just bail and try again next frame
+            if (instance.LeftNodes == null || instance.RightNodes == null) return;
 
             ReRandomizeWires(instance);
 
-            Color[]    colors    = WireMinigame.colors;
-            Sprite[]   symbols   = instance.Symbols;
-            Wire[]     leftNodes = instance.LeftNodes;
-            WireNode[] rightNodes = instance.RightNodes;
-            sbyte[]    expected  = instance.ExpectedWires;
+            var colors = WireMinigame.colors;
+            var symbols = instance.Symbols;
+            var leftNodes = instance.LeftNodes;
+            var rightNodes = instance.RightNodes;
+            var expected = instance.ExpectedWires;
 
-            int colorCount  = colors  != null ? colors.Length  : 0;
-            int symbolCount = symbols != null ? symbols.Length : 0;
-
+            // Loop through and set up the wire colors/symbols
             for (int i = 0; i < leftNodes.Length; i++)
             {
-                Wire      leftWire  = leftNodes[i];
-                int       rightIdx  = expected[i];
-                WireNode  rightNode = (rightIdx >= 0 && rightIdx < rightNodes.Length) ? rightNodes[rightIdx] : null;
+                Wire lWire = leftNodes[i];
+                int rIdx = expected[i];
+                WireNode rNode = (rIdx >= 0 && rIdx < rightNodes.Length) ? rightNodes[rIdx] : null;
 
-                Color  color  = colorCount  > 0 ? colors[i  % colorCount]  : Color.white;
-                Sprite symbol = symbolCount > 0 ? symbols[i % symbolCount] : null;
+                Color c = (colors != null && colors.Length > 0) ? colors[i % colors.Length] : Color.white;
+                Sprite s = (symbols != null && symbols.Length > 0) ? symbols[i % symbols.Length] : null;
 
-                leftWire?.SetColor(color, symbol);
-                rightNode?.SetColor(color, symbol);
+                lWire?.SetColor(c, s);
+                rNode?.SetColor(c, s);
 
-                if (leftWire != null)
+                if (lWire != null)
                 {
-                    leftWire.ResetLine(leftWire.BaseWorldPos, true);
-                    if (leftWire.Liner != null)
-                        leftWire.Liner.color = Color.white;
+                    lWire.ResetLine(lWire.BaseWorldPos, true);
+                    if (lWire.Liner != null) lWire.Liner.color = Color.white;
                 }
             }
 
-            instance.myController  = null;
-            selectedWireIndex      = -1;
-            isDragging             = false;
+            instance.myController = null;
+            selectedIdx = -1;
+            isDragging = false;
 
+            // Resetting the glyphs
             if (instance.selectingWireGlyphs != null)
-                for (int i = 0; i < instance.selectingWireGlyphs.Length; i++)
-                    instance.selectingWireGlyphs[i]?.SetActive(true);
+                foreach (var g in instance.selectingWireGlyphs) g?.SetActive(true);
 
             if (instance.movingWireGlyphs != null)
-                for (int i = 0; i < instance.movingWireGlyphs.Length; i++)
-                    instance.movingWireGlyphs[i]?.SetActive(false);
+                foreach (var g in instance.movingWireGlyphs) g?.SetActive(false);
 
-            isSetupDone = true;
+            setupDone = true;
         }
 
         private static void ReRandomizeWires(WireMinigame instance)
         {
             int count = instance.LeftNodes.Length;
-            if (count == 0)
-                return;
+            if (count == 0) return;
 
             instance.ExpectedWires = new sbyte[count];
-            instance.ActualWires   = new sbyte[count];
+            instance.ActualWires = new sbyte[count];
 
             sbyte[] rightOrder = new sbyte[count];
-            for (sbyte i = 0; i < count; i++)
-                rightOrder[i] = i;
+            for (sbyte i = 0; i < count; i++) rightOrder[i] = i;
 
-            // Fisher-Yates shuffle
+            // Standard shuffle
             for (int i = count - 1; i > 0; i--)
             {
                 int j = UnityEngine.Random.Range(0, i + 1);
-                (rightOrder[i], rightOrder[j]) = (rightOrder[j], rightOrder[i]);
+                sbyte temp = rightOrder[i];
+                rightOrder[i] = rightOrder[j];
+                rightOrder[j] = temp;
             }
 
             for (int i = 0; i < count; i++)
             {
                 instance.ExpectedWires[i] = rightOrder[i];
-                instance.ActualWires[i]    = -1;
+                instance.ActualWires[i] = -1;
             }
         }
 
-        // ================== PER-FRAME UPDATE ==================
         public static void UpdateAndroid(WireMinigame instance)
         {
-            Wire[]     leftNodes  = instance.LeftNodes;
-            WireNode[] rightNodes = instance.RightNodes;
-            if (leftNodes == null || rightNodes == null)
-                return;
+            var leftNodes = instance.LeftNodes;
+            var rightNodes = instance.RightNodes;
+            if (leftNodes == null || rightNodes == null) return;
 
-            // Cache the main camera ONCE. Camera.main is a tagged FindObjectOfType and is
-            // extremely costly to call every frame on IL2CPP. The cached reference auto
-            // invalidates on scene change because UnityObject == null is true for destroyed cams.
-            Camera cam = GetCamera();
-            if (cam == null)
-                return;
+            if (cam == null) cam = Camera.main;
+            if (cam == null) return;
 
             bool began = false;
             bool ended = false;
             Vector2 worldPos = default;
 
-            bool touchActive = Input.touchCount > 0;
-            bool mouseActive = Input.GetMouseButton(0) || Input.GetMouseButtonDown(0);
-
-            if (touchActive)
+            // Handling both touch and mouse because sometimes people use emulators or weird setups
+            if (Input.touchCount > 0)
             {
                 Touch touch = Input.GetTouch(0);
                 began = touch.phase == TouchPhase.Began;
                 ended = touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled;
-                if (began || isDragging)
-                    worldPos = cam.ScreenToWorldPoint(touch.position);
+                if (began || isDragging) worldPos = cam.ScreenToWorldPoint(touch.position);
             }
-            else if (mouseActive)
+            else if (Input.GetMouseButton(0) || Input.GetMouseButtonDown(0))
             {
                 began = Input.GetMouseButtonDown(0);
                 ended = Input.GetMouseButtonUp(0);
-                if (began || isDragging)
-                    worldPos = cam.ScreenToWorldPoint(Input.mousePosition);
-            }
-            else
-            {
-                began = false;
-                ended = false;
+                if (began || isDragging) worldPos = cam.ScreenToWorldPoint(Input.mousePosition);
             }
 
-            // ---- Began: grab a left (start) wire, or tap a connected right wire to unattach ----
+            // --- Logic for grabbing a wire ---
             if (began)
             {
-                selectedWireIndex = -1;
-                isDragging        = false;
+                selectedIdx = -1;
+                isDragging = false;
 
-                // 1) Grab a left wire -> lift it off (reset to start) and start dragging.
                 for (int i = 0; i < leftNodes.Length; i++)
                 {
                     Wire wire = leftNodes[i];
                     if (wire?.hitbox != null && wire.hitbox.OverlapPoint(worldPos))
                     {
-                        selectedWireIndex = i;
-                        isDragging        = true;
+                        selectedIdx = i;
+                        isDragging = true;
 
-                        // Lift off an already-connected wire right away.
+                        // If it's already connected, let's detach it so we can re-drag
                         if (i < instance.ActualWires.Length && instance.ActualWires[i] >= 0)
                         {
                             instance.ActualWires[i] = -1;
                             wire.ResetLine(wire.BaseWorldPos, true);
-                            if (wire.Liner != null)
-                                wire.Liner.color = Color.white;
+                            if (wire.Liner != null) wire.Liner.color = Color.white;
                         }
 
                         if (instance.selectedWireUI != null)
@@ -228,8 +201,7 @@ namespace Submerged.BaseGame.Patches
                     }
                 }
 
-                // 2) Not grabbing a left wire: a tap on a CONNECTED right wire unattaches it
-                //    (resets that wire back to its start position) — unattach method #1.
+                // If we didn't grab a wire, maybe we're tapping a connected one to disconnect it?
                 if (!isDragging && instance.ActualWires != null)
                 {
                     WireNode rNode = GetRightNodeAt(rightNodes, worldPos);
@@ -240,12 +212,10 @@ namespace Submerged.BaseGame.Patches
                             if (instance.ActualWires[i] == rNode.WireId)
                             {
                                 instance.ActualWires[i] = -1;
-                                Wire w = (i < leftNodes.Length) ? leftNodes[i] : null;
-                                if (w != null)
+                                if (i < leftNodes.Length && leftNodes[i] != null)
                                 {
-                                    w.ResetLine(w.BaseWorldPos, true);
-                                    if (w.Liner != null)
-                                        w.Liner.color = Color.white;
+                                    leftNodes[i].ResetLine(leftNodes[i].BaseWorldPos, true);
+                                    if (leftNodes[i].Liner != null) leftNodes[i].Liner.color = Color.white;
                                 }
                                 break;
                             }
@@ -254,116 +224,86 @@ namespace Submerged.BaseGame.Patches
                 }
             }
 
-            // ---- Dragging: auto-connect when near a right wire, follow the cursor otherwise ----
-            if (isDragging && selectedWireIndex >= 0 && selectedWireIndex < leftNodes.Length)
+            // --- Dragging logic ---
+            if (isDragging && selectedIdx >= 0 && selectedIdx < leftNodes.Length)
             {
-                Wire     wire      = leftNodes[selectedWireIndex];
+                Wire wire = leftNodes[selectedIdx];
                 WireNode rightNode = GetRightNodeAt(rightNodes, worldPos);
 
                 if (rightNode != null && wire != null)
                 {
-                    // Near a right wire -> auto-connect (snap). Only fire sound/complete when
-                    // the connection actually changes, so holding still over the node is silent.
-                    if (selectedWireIndex >= instance.ActualWires.Length ||
-                        instance.ActualWires[selectedWireIndex] != rightNode.WireId)
+                    // Snap to node
+                    if (selectedIdx >= instance.ActualWires.Length || instance.ActualWires[selectedIdx] != rightNode.WireId)
                     {
                         wire.ConnectRight(rightNode);
-                        if (selectedWireIndex < instance.ActualWires.Length)
-                            instance.ActualWires[selectedWireIndex] = rightNode.WireId;
+                        if (selectedIdx < instance.ActualWires.Length)
+                            instance.ActualWires[selectedIdx] = rightNode.WireId;
 
                         if (instance.WireSounds != null && instance.WireSounds.Length > 0)
                         {
-                            int idx = UnityEngine.Random.Range(0, instance.WireSounds.Length);
-                            SoundManager.Instance?.PlaySound(instance.WireSounds[idx], false);
+                            SoundManager.Instance?.PlaySound(instance.WireSounds[UnityEngine.Random.Range(0, instance.WireSounds.Length)], false);
                         }
 
-                        TryCompleteTask(instance);
+                        CheckCompletion(instance);
                     }
                 }
                 else
                 {
-                    // Free drag -> the line follows the cursor and the wire isn't connected.
-                    if (wire != null)
-                        wire.ResetLine(worldPos, false);
-                    if (selectedWireIndex < instance.ActualWires.Length &&
-                        instance.ActualWires[selectedWireIndex] != -1)
-                        instance.ActualWires[selectedWireIndex] = -1;
+                    // Just following the cursor
+                    if (wire != null) wire.ResetLine(worldPos, false);
+                    if (selectedIdx < instance.ActualWires.Length && instance.ActualWires[selectedIdx] != -1)
+                        instance.ActualWires[selectedIdx] = -1;
                 }
 
-                // Release: if over a node it's already connected (snapped above); if in empty
-                // space the wire resets back to its start position (unattach method #2 tail).
                 if (ended)
                 {
                     if (rightNode == null && wire != null)
                     {
                         wire.ResetLine(wire.BaseWorldPos, true);
-                        if (wire.Liner != null)
-                            wire.Liner.color = Color.white;
+                        if (wire.Liner != null) wire.Liner.color = Color.white;
                     }
-                    selectedWireIndex = -1;
-                    isDragging        = false;
+                    selectedIdx = -1;
+                    isDragging = false;
                 }
             }
         }
 
         private static WireNode GetRightNodeAt(WireNode[] nodes, Vector2 pos)
         {
-            if (nodes == null)
-                return null;
-
-            for (int i = 0; i < nodes.Length; i++)
+            if (nodes == null) return null;
+            foreach (var node in nodes)
             {
-                WireNode node = nodes[i];
-                if (node?.hitbox != null && node.hitbox.OverlapPoint(pos))
-                    return node;
+                if (node?.hitbox != null && node.hitbox.OverlapPoint(pos)) return node;
             }
             return null;
         }
 
-        /// <summary>
-        /// Only completes and closes the minigame once every wire matches its expected target.
-        /// </summary>
-        private static void TryCompleteTask(WireMinigame instance)
+        private static void CheckCompletion(WireMinigame instance)
         {
             for (int i = 0; i < instance.ActualWires.Length; i++)
             {
-                if (instance.ActualWires[i] != instance.ExpectedWires[i])
-                    return; // Still wires left to connect.
+                if (instance.ActualWires[i] != instance.ExpectedWires[i]) return;
             }
 
-            // CheckTask() already calls NextStep/Complete internally when all wires match,
-            // so calling them again here would complete the task twice.
             instance.CheckTask();
             instance.StartCoroutine(instance.CoStartClose());
         }
 
         public static void ForceCleanup(WireMinigame instance)
         {
-            Wire[] leftNodes = instance.LeftNodes;
-            if (leftNodes == null)
-                return;
-
-            for (int i = 0; i < leftNodes.Length; i++)
+            if (instance.LeftNodes == null) return;
+            foreach (var wire in instance.LeftNodes)
             {
-                Wire wire = leftNodes[i];
-                if (wire != null)
-                    wire.ResetLine(wire.BaseWorldPos, true);
+                if (wire != null) wire.ResetLine(wire.BaseWorldPos, true);
             }
         }
 
         public static void Reset()
         {
-            selectedWireIndex = -1;
-            isDragging        = false;
-            isSetupDone       = false;
-            cachedCamera     = null; // force a fresh Camera.main lookup on next open
-        }
-
-        private static Camera GetCamera()
-        {
-            if (cachedCamera == null)
-                cachedCamera = Camera.main;
-            return cachedCamera;
+            selectedIdx = -1;
+            isDragging = false;
+            setupDone = false;
+            cam = null; 
         }
     }
     #endif
