@@ -30,7 +30,7 @@ public sealed class MinigameProperties(nint ptr) : MonoBehaviour(ptr)
     public string minigameName = "";
 
     public bool dontCloseOnBgClick;
-    
+
     public void Awake()
     {
         Transform propObj = transform.Find("MinigameProperties");
@@ -67,7 +67,7 @@ public sealed class MinigameProperties(nint ptr) : MonoBehaviour(ptr)
             if (splits.Length > 1) minigameName = splits[1];
         }
     }
-
+    
     public void CloseTask()
     {
         if (dontCloseOnBgClick) return;
@@ -76,7 +76,7 @@ public sealed class MinigameProperties(nint ptr) : MonoBehaviour(ptr)
         if (minigames == null || minigames.Length == 0) return;
 
 #if ANDROID
-        // Strict null and validation checks for Android garbage collection threads
+        // Exploded null checks and safe TryCast for unmanaged Android garbage collection
         var activeMinigame = minigames.FirstOrDefault(mg => mg != null && !mg.TryCast<DivertPowerMetagame>());
         if (activeMinigame != null)
             activeMinigame.Close();
