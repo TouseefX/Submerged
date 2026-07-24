@@ -9,7 +9,6 @@ namespace Submerged.Minigames.Patches;
 public static class NormalPlayerTaskInitializePatches
 {
     [HarmonyPrefix]
-    [UnityEngine.Scripting.UsedImplicitly]
     public static bool Prefix(NormalPlayerTask __instance)
     {
         if (__instance == null || __instance.gameObject == null) return true;
@@ -21,7 +20,6 @@ public static class NormalPlayerTaskInitializePatches
     }
 
     [HarmonyPostfix]
-    [UnityEngine.Scripting.UsedImplicitly]
     public static void Postfix(NormalPlayerTask __instance)
     {
         if (__instance == null) return;
