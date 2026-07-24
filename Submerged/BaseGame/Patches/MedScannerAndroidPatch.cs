@@ -187,49 +187,62 @@ public static class MedScanMinigamePatch
 
         if (string.IsNullOrEmpty(fullVitals))
         {
-            var player     = PlayerControl.LocalPlayer;
+            var player = PlayerControl.LocalPlayer;
             var translator = GetTranslator();
 
             if (string.IsNullOrEmpty(cachedBloodType))
                 cachedBloodType = BloodTypes[UnityEngine.Random.Range(0, BloodTypes.Length)];
 
-            string colorName   = GetMedScanColorString(player.CurrentOutfit.ColorId).ToUpper();
+            string colorName = GetMedScanColorString(player.CurrentOutfit.ColorId).ToUpper();
             string colorPrefix = colorName.Length >= 3 ? colorName.Substring(0, 3) : colorName;
-            string medicalId   = $"{colorPrefix}P{player.PlayerId}";
-            int    etaSeconds  = Mathf.CeilToInt(__instance.ScanTimer);
-            string etaLine     = string.Format(translator.GetString(StringNames.MedETA), etaSeconds);
+            string medicalId = $"{colorPrefix}P{player.PlayerId}";
+            int etaSeconds = Mathf.CeilToInt(__instance.ScanTimer);
+            string etaLine = string.Format(translator.GetString(StringNames.MedETA), etaSeconds);
 
             fullVitals = $"{translator.GetString(StringNames.MedID)} {medicalId}      " +
-                         $"{translator.GetString(StringNames.MedHT)} 3' 6\"      " +
-                         $"{translator.GetString(StringNames.MedWT)} 92lb\n" +
-                         $"{translator.GetString(StringNames.MedC)} {colorName}      " +
-                         $"{translator.GetString(StringNames.MedBT)} {cachedBloodType}         " +
-                         etaLine;
+                $"{translator.GetString(StringNames.MedHT)} 3' 6\"      " +
+                $"{translator.GetString(StringNames.MedWT)} 92lb\n" +
+                $"{translator.GetString(StringNames.MedC)} {colorName}      " +
+                $"{translator.GetString(StringNames.MedBT)} {cachedBloodType}         " +
+                etaLine;
 
             typeInterval = (__instance.ScanTimer - 1f) / Mathf.Max(1, fullVitals.Length);
         }
 
-        typeTimer += Time.fixedDeltaTime;
+        typeTimer += Time.deltaTime;
         if (typeTimer < typeInterval) return;
 
-        typeTimer = 0f;
+        int charsToAdvance = Mathf.FloorToInt(typeTimer / typeInterval);
+        typeTimer %= typeInterval;
 
         if (charIndex < fullVitals.Length)
         {
-            char currentChar = fullVitals[charIndex];
-            charIndex++;
-
-            // Cached: was GetComponentsInChildren<TextMeshPro>(true) on every tick (allocates!).
             TextMeshPro vitals = GetVitalsText(__instance);
             if (vitals != null)
             {
-                vitals.text = fullVitals.Substring(0, charIndex);
+                if (vitals.text != fullVitals)
+                    vitals.text = fullVitals;
 
-                if (currentChar != ' ' && __instance.TextSound != null && SoundManager.Instance != null)
-                    SoundManager.Instance.PlaySound(__instance.TextSound, false, 0.4f);
+                for (int i = 0; i < charsToAdvance; i++)
+                {
+                    if (charIndex >= fullVitals.Length) break;
+
+                    char currentChar = fullVitals[charIndex];
+                    charIndex++;
+
+                    if (currentChar != ' ' && currentChar != '\n' && __instance.TextSound != null && SoundManager.Instance != null)
+                    {
+                        SoundManager.Instance.PlaySound(__instance.TextSound, false, 0.4f);
+                    }
+                }
+
+                vitals.maxVisibleCharacters = charIndex;
             }
         }
-        else vitalsDone = true;
+        else
+        {
+            vitalsDone = true;
+        }
     }
 
     public static void Reset()
