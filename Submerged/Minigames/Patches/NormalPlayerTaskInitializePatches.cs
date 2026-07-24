@@ -24,8 +24,8 @@ public static class NormalPlayerTaskInitializePatches
     {
         if (__instance == null) return;
 
-        // Custom task handling for Submerged sea plant oxygenation
-        if ((int)__instance.TaskType == (int)CustomTaskTypes.OxygenateSeaPlants)
+        // Compare task structures directly using explicit cast conversions
+        if ((TaskTypes)CustomTaskTypes.OxygenateSeaPlants == __instance.TaskType)
         {
 #if ANDROID
             // Use native standard Random engine for cross-platform IL2CPP binary performance
