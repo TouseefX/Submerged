@@ -36,7 +36,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="amongus.gamelibs.android.17.4.0" Version="17.4.0" Condition="'$(Platform)'=='Android'" />
+        <PackageReference Include="amongus.gamelibs.android" Version="17.4.0" Condition="'$(Platform)'=='Android'" />
         <PackageReference Include="AmongUs.GameLibs.Steam" Version="2026.3.31" Condition="'$(Platform)'=='Submerged'" />
         <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.783" />
         <PackageReference Include="Reactor" Version="2.5.1-ci.384" />
